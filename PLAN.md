@@ -228,8 +228,11 @@ Run the suite any time with:
 npm run db:test
 ```
 
+✅ **Deployed to the hosted project** (`tihzzdmvjdplmcdscxbh`) and verified live over the REST API: anonymous callers get `401 / 42501` on every private table, the catalogue stays browsable pre-signup, and anonymous writes are refused.
+
+A seventh migration was added after deployment. Hosted Supabase ships default grants giving `anon` table-level SELECT across the public schema, which left RLS as the *only* barrier — behaviourally safe, but one mistaken permissive policy away from exposure. `20250101000007_revoke_anon.sql` restores the two-layer posture the local database had, and revokes default privileges so future tables don't silently inherit anon access.
+
 **Outstanding before Phase 1 closes:**
-- **Apply migrations to the hosted Supabase project.** Everything so far is local-only. Needs `npx supabase link --project-ref tihzzdmvjdplmcdscxbh` (asks for the database password) then `npx supabase db push`.
 - **WatermelonDB local schema.** Not yet started. Must exist before Phase 2 screens are written, since retrofitting offline-first is a rewrite rather than a refactor.
 
 ---
