@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import '@/global.css';
+import { AuthProvider } from '@/auth/auth-provider';
 import { ThemeProvider, useTheme } from '@/theme/theme-provider';
 
 function RootNavigator() {
@@ -10,7 +11,7 @@ function RootNavigator() {
   return (
     <>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
-      <Stack screenOptions={{ headerShown: false }} />
+      <Stack screenOptions={{ headerShown: false, animation: 'fade' }} />
     </>
   );
 }
@@ -19,7 +20,9 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemeProvider>
-        <RootNavigator />
+        <AuthProvider>
+          <RootNavigator />
+        </AuthProvider>
       </ThemeProvider>
     </GestureHandlerRootView>
   );

@@ -1010,6 +1010,80 @@ export type Database = {
           },
         ]
       }
+      stylist_invitations: {
+        Row: {
+          booth_rent_cents: number
+          chair_id: string
+          claimed_at: string | null
+          claimed_by: string | null
+          classification: Database["public"]["Enums"]["worker_classification"]
+          created_at: string
+          display_name: string
+          email: string
+          id: string
+          invited_by: string | null
+          rent_interval: string
+          salon_id: string
+        }
+        Insert: {
+          booth_rent_cents?: number
+          chair_id: string
+          claimed_at?: string | null
+          claimed_by?: string | null
+          classification: Database["public"]["Enums"]["worker_classification"]
+          created_at?: string
+          display_name: string
+          email: string
+          id?: string
+          invited_by?: string | null
+          rent_interval?: string
+          salon_id: string
+        }
+        Update: {
+          booth_rent_cents?: number
+          chair_id?: string
+          claimed_at?: string | null
+          claimed_by?: string | null
+          classification?: Database["public"]["Enums"]["worker_classification"]
+          created_at?: string
+          display_name?: string
+          email?: string
+          id?: string
+          invited_by?: string | null
+          rent_interval?: string
+          salon_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stylist_invitations_chair_id_fkey"
+            columns: ["chair_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stylist_invitations_claimed_by_fkey"
+            columns: ["claimed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stylist_invitations_invited_by_fkey"
+            columns: ["invited_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stylist_invitations_salon_id_fkey"
+            columns: ["salon_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stylist_settings: {
         Row: {
           arrival_note: string
@@ -1258,9 +1332,23 @@ export type Database = {
     Functions: {
       admin_tenant_ids: { Args: never; Returns: string[] }
       administered_child_tenant_ids: { Args: never; Returns: string[] }
+      claim_stylist_invitation: { Args: never; Returns: string }
+      create_salon: {
+        Args: { salon_name: string; salon_timezone?: string }
+        Returns: string
+      }
       current_client_ids: { Args: never; Returns: string[] }
       current_tenant_ids: { Args: never; Returns: string[] }
-      impersonate: { Args: { uid: string }; Returns: undefined }
+      invite_stylist: {
+        Args: {
+          p_booth_rent_cents?: number
+          p_classification: Database["public"]["Enums"]["worker_classification"]
+          p_display_name: string
+          p_email: string
+          p_rent_interval?: string
+        }
+        Returns: string
+      }
     }
     Enums: {
       appointment_status:
