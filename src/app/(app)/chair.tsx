@@ -167,6 +167,12 @@ export default function ChairHome() {
           <GlassCard>
             <View style={styles.card}>
               <CCButton
+                label="Booking requests"
+                variant="primary"
+                fullWidth
+                onPress={() => router.push('/(app)/requests')}
+              />
+              <CCButton
                 label="Edit profile"
                 variant="secondary"
                 fullWidth

@@ -2,7 +2,7 @@
 
 Status file for whoever picks this up next. **[PLAN.md](./PLAN.md) is the spec** — it records *why* decisions were made, several of which look arbitrary and are not. Read it before changing behaviour.
 
-_Last updated: Phase 2 complete._
+_Last updated: Phase 3 core complete._
 
 ---
 
@@ -13,10 +13,19 @@ _Last updated: Phase 2 complete._
 | 0 — Foundation, design tokens, component gallery | ✅ done |
 | 1 — Schema, RLS, WatermelonDB | ✅ done, deployed |
 | 2 — Identity & tenant onboarding | ✅ done, deployed |
-| 3+ | not started |
+| 3 — Booking & negotiation | 🟡 core done, notifications outstanding |
+| 4+ | not started |
 
 **Live:** https://cosmocutie.vercel.app · **Repo:** https://github.com/kevonmartorell-design/cosmocutie
 **Supabase:** `tihzzdmvjdplmcdscxbh` · **EAS:** `@vonalmighty/cosmocutie` · **Bundle:** `com.cosmocutie.app`
+
+### Phase 3 — done
+Availability engine (`available_slots`) honouring hours, buffers, time blocks and held slots · full negotiation state machine (`create_booking_request`, `respond_to_request`) with caps enforced in SQL · expiry via `pg_cron` every 5 min · client booking flow (stylist → services → day → time) · negotiation thread UI · request inbox for both sides.
+
+Verified: 12 SQL checks on the state machine, 6 on expiry, plus a full two-party run through the browser — Nina requests, Dana sees "Your turn" and Accept/Suggest/Decline, accepts, and a real appointment appears with 30-min buffers, a snapshotted price, and the slot removed from availability.
+
+### Phase 3 — remaining
+**Push notifications.** The negotiation is deadline-driven, so it needs them to be usable — `expo-notifications` is a native module, so this is the change that will require a fresh `eas build` rather than an OTA update. Also outstanding: waitlist matching, gap-time double-booking, reschedule/cancel of a *confirmed* appointment, no-show handling.
 
 ### Phase 2 — done
 Auth and route guards · salon first-run · stylist invitations + claim-on-signup · salon admin view · stylist chair view · service menu · deposit toggle · **business hours** · **stylist profile (bio, headline, Instagram, publish toggle)** · **client invite links with claim-after-signup** · **client account area (stylists, theme, data export)** · **stylist offboarding**.
@@ -57,6 +66,9 @@ Migrations live in `supabase/migrations/`, tests in `supabase/tests/`.
 - **Avoid full-screen `backdrop-filter` on web.** It ghosts on resize in Chromium and reads as the screen rendering twice. The ambient layer uses a CSS `filter` on web instead.
 - **Browser automation cannot drive react-native-web.** `form_input` sets DOM values without updating React state, and synthetic clicks/scrolls often do not reach Pressable. Use the native value setter + `input` event, and ask the user to verify real interaction.
 - **`gen_random_bytes` is not portable.** Locally pgcrypto lands in `public`; on hosted Supabase it lives in `extensions` and is not on the search_path for a DDL default, so a migration passes locally and fails on push. Prefer `gen_random_uuid()`.
+- **Never seed `auth.users` by hand.** GoTrue reads its token columns as text and fails on NULL, producing an opaque "Database error querying schema" at sign-in. Create test users through `/auth/v1/signup`, then attach roles with SQL.
+- **PL/pgSQL variables shadow column names.** A local named `weekday` makes `bh.weekday = weekday` ambiguous. Prefix locals (`v_weekday`).
+- **Enum columns need explicit casts from `CASE`.** Postgres infers enums for bare literals but not for a CASE result.
 - **Hosted Supabase sends ~3 emails/hour** on the built-in SMTP. Real signups need a custom SMTP provider (Resend) before anyone else uses the app.
 
 ---

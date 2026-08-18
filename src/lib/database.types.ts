@@ -227,6 +227,7 @@ export type Database = {
           proposed_ends_at: string
           proposed_starts_at: string
           resolved_at: string | null
+          service_ids: string[]
           status: Database["public"]["Enums"]["booking_request_status"]
           step_deadline: string
           stripe_payment_intent_id: string | null
@@ -251,6 +252,7 @@ export type Database = {
           proposed_ends_at: string
           proposed_starts_at: string
           resolved_at?: string | null
+          service_ids?: string[]
           status?: Database["public"]["Enums"]["booking_request_status"]
           step_deadline: string
           stripe_payment_intent_id?: string | null
@@ -275,6 +277,7 @@ export type Database = {
           proposed_ends_at?: string
           proposed_starts_at?: string
           resolved_at?: string | null
+          service_ids?: string[]
           status?: Database["public"]["Enums"]["booking_request_status"]
           step_deadline?: string
           stripe_payment_intent_id?: string | null
@@ -1431,14 +1434,39 @@ export type Database = {
     Functions: {
       admin_tenant_ids: { Args: never; Returns: string[] }
       administered_child_tenant_ids: { Args: never; Returns: string[] }
+      available_slots: {
+        Args: {
+          p_date: string
+          p_duration_minutes: number
+          p_tenant_id: string
+        }
+        Returns: {
+          slot_end: string
+          slot_start: string
+        }[]
+      }
       claim_client_invite: { Args: { p_token: string }; Returns: string }
       claim_stylist_invitation: { Args: never; Returns: string }
+      create_booking_request: {
+        Args: {
+          p_child_age?: number
+          p_child_name?: string
+          p_is_for_child?: boolean
+          p_note?: string
+          p_service_ids: string[]
+          p_starts_at: string
+          p_tenant_id: string
+        }
+        Returns: string
+      }
       create_salon: {
         Args: { salon_name: string; salon_timezone?: string }
         Returns: string
       }
       current_client_ids: { Args: never; Returns: string[] }
       current_tenant_ids: { Args: never; Returns: string[] }
+      expire_stale_requests: { Args: never; Returns: number }
+      impersonate: { Args: { em: string; uid: string }; Returns: undefined }
       invite_stylist: {
         Args: {
           p_booth_rent_cents?: number
@@ -1449,7 +1477,21 @@ export type Database = {
         }
         Returns: string
       }
+      materialise_appointment: {
+        Args: { p_actor: string; p_request_id: string }
+        Returns: string
+      }
       offboard_stylist: { Args: { p_chair_id: string }; Returns: undefined }
+      respond_to_request: {
+        Args: {
+          p_action: Database["public"]["Enums"]["negotiation_action"]
+          p_new_starts_at?: string
+          p_note?: string
+          p_request_id: string
+        }
+        Returns: string
+      }
+      step_deadline_for: { Args: { p_global: string }; Returns: string }
     }
     Enums: {
       appointment_status:

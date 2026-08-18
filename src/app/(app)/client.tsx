@@ -76,11 +76,20 @@ export default function ClientHome() {
 
           <GlassCard rounded="xl">
             <View style={styles.card}>
-              <Text style={[typography.heading, { color: theme.text }]}>No appointments yet</Text>
+              <Text style={[typography.heading, { color: theme.text }]}>Book an appointment</Text>
               <Text style={[typography.body, { color: theme.textMuted }]}>
-                Booking opens in the next phase. Your stylist can also send you an
-                invite link to get started.
+                Pick a stylist, choose your services, and request a time.
               </Text>
+              <CCButton
+                label="Find a time"
+                variant="primary"
+                onPress={() => router.push('/(app)/book')}
+              />
+              <CCButton
+                label="My requests"
+                variant="ghost"
+                onPress={() => router.push('/(app)/requests')}
+              />
             </View>
           </GlassCard>
 
