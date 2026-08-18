@@ -37,8 +37,11 @@ npm run db:test       # reset + seed + 20 adversarial RLS checks
 npm run db:types      # regenerate src/lib/database.types.ts after a migration
 npm run typecheck
 npx expo export --platform web --clear && npx vercel deploy --prod --yes
-eas update --branch development   # ship JS to the installed device build
+npm run push:dev "Phase 3 - booking"   # ship JS to the device, with a readable title
+npm run push:list                      # what has actually been pushed
 ```
+
+**Always pass a short title.** A bare `eas update` takes the entire multi-line commit body as the message, which makes the update list unreadable and impossible to tell apart later.
 
 Migrations live in `supabase/migrations/`, tests in `supabase/tests/`.
 

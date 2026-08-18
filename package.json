@@ -51,7 +51,9 @@
     "db:reset": "supabase db reset",
     "db:test": "supabase db reset && docker exec -i supabase_db_CosmoCutie psql -U postgres -d postgres -q -v ON_ERROR_STOP=1 < supabase/tests/rls_seed.sql && docker exec -i supabase_db_CosmoCutie psql -U postgres -d postgres < supabase/tests/rls_test.sql",
     "db:types": "supabase gen types typescript --local > src/lib/database.types.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "push:dev": "eas update --branch development --message",
+    "push:list": "eas update:list --branch development --limit 10"
   },
   "private": true
 }
