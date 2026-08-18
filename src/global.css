@@ -1,0 +1,28 @@
+:root {
+  --font-display:
+    Spline Sans, Inter, ui-sans-serif, system-ui, sans-serif, Apple Color Emoji, Segoe UI Emoji,
+    Segoe UI Symbol, Noto Color Emoji;
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;
+  --font-rounded: 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif;
+  --font-serif: Georgia, 'Times New Roman', serif;
+}
+
+/*
+ * React Native's `flex: 1` resolves against the parent's height. On web the
+ * document root has no intrinsic height, so every flex:1 container collapses
+ * to its content and the layout breaks on scroll. Giving the html/body/root
+ * chain a real height is what makes RN layout behave the same on web as native.
+ */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  overflow: hidden; /* ScrollView owns scrolling, not the document. */
+  overscroll-behavior: none;
+}
