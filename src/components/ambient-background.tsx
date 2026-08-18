@@ -51,23 +51,38 @@ export function AmbientBackground({ style, children, ...rest }: ViewProps) {
 
   return (
     <View style={[styles.root, { backgroundColor: theme.background }, style]} {...rest}>
-      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFill,
+          // Web-only: blur the orb layer directly rather than compositing a
+          // backdrop-filter over it.
+          Platform.OS === 'web' ? ({ filter: 'blur(70px)' } as object) : null,
+        ]}>
         <Animated.View style={[styles.orb, styles.orbA, { backgroundColor: a }, orbA]} />
         <Animated.View style={[styles.orb, styles.orbB, { backgroundColor: b }, orbB]} />
         <Animated.View style={[styles.orb, styles.orbC, { backgroundColor: c }, orbC]} />
 
         {/*
-         * Softens the orbs into glows. Android's blur is too weak here to be
-         * worth the cost, so it leans on the off-screen sizing alone plus a
-         * light scrim.
+         * Softening the orbs into glows.
+         *
+         * Web uses a CSS blur filter on the orb layer itself. The earlier
+         * approach — a full-screen BlurView (backdrop-filter) painted over the
+         * orbs — ghosted badly in Chromium: resizing the window left the
+         * previous frame composited underneath, which reads as the whole screen
+         * being drawn twice. A plain filter has no backdrop to sample and no
+         * such artifact, and it is considerably cheaper.
+         *
+         * Android's blur is too weak to be worth the cost, so it leans on the
+         * off-screen orb sizing plus a light scrim.
          */}
-        {Platform.OS === 'android' ? (
+        {Platform.OS === 'ios' ? (
+          <BlurView intensity={100} tint={theme.glass.tint} style={StyleSheet.absoluteFill} />
+        ) : Platform.OS === 'android' ? (
           <View
             style={[StyleSheet.absoluteFill, { backgroundColor: theme.background, opacity: 0.35 }]}
           />
-        ) : (
-          <BlurView intensity={100} tint={theme.glass.tint} style={StyleSheet.absoluteFill} />
-        )}
+        ) : null}
       </View>
 
       {children}

@@ -124,9 +124,14 @@ export const lightTheme: ThemeTokens = {
   glass: {
     blurIntensity: 55,
     tint: 'light',
-    overlay: alpha(palette.white, 0.5),
-    border: alpha(palette.white, 0.55),
-    fallbackSurface: alpha(palette.white, 0.86),
+    // Top of the brief's 40–60% range. At 50% over a pale background the card
+    // edge effectively disappeared, which fails the brief's own legibility
+    // rule more than it honours its transparency one.
+    overlay: alpha(palette.white, 0.6),
+    // The rim is what separates card from background in light mode, so it
+    // carries more contrast than the dark theme's neon edge needs to.
+    border: alpha(palette.deepPlum, 0.14),
+    fallbackSurface: alpha(palette.white, 0.9),
   },
 };
 
