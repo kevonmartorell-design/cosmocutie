@@ -137,6 +137,26 @@ Then scan the QR code with Expo Go. For a build that's already installed on the 
 eas update --branch preview
 ```
 
+**Device workflow: EAS, not Expo Go.**
+
+Expo Go cannot run this app — WatermelonDB ships native code, and Expo Go is a fixed prebuilt container. Device testing uses EAS builds instead, which is also the workflow already familiar from previous projects.
+
+Build once, then update instantly:
+
+```bash
+eas build --profile development --platform ios
+```
+
+That produces an installable app (internal distribution). Afterwards, every JavaScript change ships over the air in seconds:
+
+```bash
+eas update --branch development
+```
+
+⚠️ **A new build is only needed when a NATIVE dependency is added** — not for ordinary feature work. Upcoming phases that will each require one: expo-notifications (Phase 3), expo-camera (Phase 5), Stripe SDK (Phase 4). Everything between those is `eas update`.
+
+Profiles in `eas.json`: `development` (dev client, internal), `preview` (production-like, internal), `production` (store). Supabase env vars are set per profile; the anon key is public by design and already ships in the web bundle.
+
 **Store-based device testing.** Both developer accounts are already active, so **TestFlight** and **Google Play internal testing** are available as device-review channels from day one — no enrollment wait, no new fees. Use these for the native-only items (push notifications, camera, Tap-to-Pay, offline sync, real performance) rather than treating device testing as a late-stage activity.
 
 Expo Go is faster for day-to-day iteration; TestFlight and internal testing give the closest thing to production behavior. **Push notifications in particular behave differently in Expo Go than in a real build**, so validate the Phase 3 negotiation notifications through TestFlight or an internal-testing build before considering that phase complete.
