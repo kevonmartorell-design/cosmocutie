@@ -232,8 +232,19 @@ npm run db:test
 
 A seventh migration was added after deployment. Hosted Supabase ships default grants giving `anon` table-level SELECT across the public schema, which left RLS as the *only* barrier — behaviourally safe, but one mistaken permissive policy away from exposure. `20250101000007_revoke_anon.sql` restores the two-layer posture the local database had, and revokes default privileges so future tables don't silently inherit anon access.
 
-**Outstanding before Phase 1 closes:**
-- **WatermelonDB local schema.** Not yet started. Must exist before Phase 2 screens are written, since retrofitting offline-first is a rewrite rather than a refactor.
+✅ **WatermelonDB local schema done.** 14 tables mirrored in `src/db/`, models with relations, platform-split adapters, and a smoke test at `/db-check` that proves writes/relations/queries/JSON round-trip actually work in a browser (7/7).
+
+Deliberately **not** mirrored locally: payments (money is server-authoritative), booking requests and negotiation events (deadline-driven and contested — stale local state would show a taken slot as free), feed/shop (network content), and photos (blobs belong in Storage).
+
+⚠️ **Workflow consequence: Expo Go no longer works on device.** WatermelonDB ships native code, so iOS/Android testing now needs a development build:
+
+```bash
+npx expo prebuild && npx expo run:ios
+```
+
+The Vercel web preview is unaffected — it runs LokiJS over IndexedDB, pure JavaScript. But that also means **web previews cannot validate offline behaviour**: the storage engines genuinely differ, so Phase 6 offline testing must happen on a real device. This supersedes the "scan the QR code with Expo Go" guidance in the Development Workflow section above.
+
+**Phase 1 is complete.**
 
 ---
 
