@@ -33,6 +33,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "supabase": "^2.114.0",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -41,7 +42,13 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "db:start": "supabase start -x vector,logflare,studio,storage-api,imgproxy,edge-runtime,realtime,supavisor,mailpit",
+    "db:stop": "supabase stop",
+    "db:reset": "supabase db reset",
+    "db:test": "supabase db reset && docker exec -i supabase_db_CosmoCutie psql -U postgres -d postgres -q -v ON_ERROR_STOP=1 < supabase/tests/rls_seed.sql && docker exec -i supabase_db_CosmoCutie psql -U postgres -d postgres < supabase/tests/rls_test.sql",
+    "db:types": "supabase gen types typescript --local > src/lib/database.types.ts",
+    "typecheck": "tsc --noEmit"
   },
   "private": true
 }

@@ -53,3 +53,7 @@ example
 # Expo web export
 dist/
 .env*
+
+# Supabase local
+supabase/.branches
+supabase/.temp
