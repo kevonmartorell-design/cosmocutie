@@ -2,7 +2,7 @@
 
 Status file for whoever picks this up next. **[PLAN.md](./PLAN.md) is the spec** — it records *why* decisions were made, several of which look arbitrary and are not. Read it before changing behaviour.
 
-_Last updated: Phase 2 in progress._
+_Last updated: Phase 2 complete._
 
 ---
 
@@ -12,19 +12,19 @@ _Last updated: Phase 2 in progress._
 |---|---|
 | 0 — Foundation, design tokens, component gallery | ✅ done |
 | 1 — Schema, RLS, WatermelonDB | ✅ done, deployed |
-| 2 — Identity & tenant onboarding | 🟡 core done, see below |
+| 2 — Identity & tenant onboarding | ✅ done, deployed |
 | 3+ | not started |
 
 **Live:** https://cosmocutie.vercel.app · **Repo:** https://github.com/kevonmartorell-design/cosmocutie
 **Supabase:** `tihzzdmvjdplmcdscxbh` · **EAS:** `@vonalmighty/cosmocutie` · **Bundle:** `com.cosmocutie.app`
 
 ### Phase 2 — done
-Auth (sign in/up, session + membership resolution), route guards, salon first-run, stylist invitations, invitation claiming on signup, salon admin view, stylist chair view, service menu creation, deposit toggle.
+Auth and route guards · salon first-run · stylist invitations + claim-on-signup · salon admin view · stylist chair view · service menu · deposit toggle · **business hours** · **stylist profile (bio, headline, Instagram, publish toggle)** · **client invite links with claim-after-signup** · **client account area (stylists, theme, data export)** · **stylist offboarding**.
 
-Verified end to end: signup → create salon → lands on staff screen with **both** workspaces (admin on the salon, stylist on their own chair).
+Verified end to end in a browser plus 9 SQL checks. Notably: offboarding deactivates a chair and cancels future appointments but **does not delete the renter's book** — that data is theirs and must be exported first.
 
-### Phase 2 — remaining
-Business hours, portfolio/photos, client account area (likes/following/orders/settings), stylist offboarding, deep-link client invitations.
+**Deferred to Phase 5 (needs `expo-image-picker`, a native module → new EAS build):** portfolio photo upload. Bio and Instagram link ship now.
+**Deferred to Phase 7:** in-app account deletion (compliance phase, required before store submission).
 
 ---
 
@@ -52,6 +52,7 @@ Migrations live in `supabase/migrations/`, tests in `supabase/tests/`.
 - **Don't add INSERT policies to `tenants`.** Salon/chair creation goes through the `create_salon` / `invite_stylist` RPCs. A broad insert policy would let anyone mint a chair inside someone else's salon.
 - **Avoid full-screen `backdrop-filter` on web.** It ghosts on resize in Chromium and reads as the screen rendering twice. The ambient layer uses a CSS `filter` on web instead.
 - **Browser automation cannot drive react-native-web.** `form_input` sets DOM values without updating React state, and synthetic clicks/scrolls often do not reach Pressable. Use the native value setter + `input` event, and ask the user to verify real interaction.
+- **`gen_random_bytes` is not portable.** Locally pgcrypto lands in `public`; on hosted Supabase it lives in `extensions` and is not on the search_path for a DDL default, so a migration passes locally and fails on push. Prefer `gen_random_uuid()`.
 - **Hosted Supabase sends ~3 emails/hour** on the built-in SMTP. Real signups need a custom SMTP provider (Resend) before anyone else uses the app.
 
 ---

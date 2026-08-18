@@ -353,6 +353,61 @@ export type Database = {
           },
         ]
       }
+      client_invites: {
+        Row: {
+          claimed_at: string | null
+          claimed_by: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          label: string | null
+          tenant_id: string
+          token: string
+        }
+        Insert: {
+          claimed_at?: string | null
+          claimed_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label?: string | null
+          tenant_id: string
+          token?: string
+        }
+        Update: {
+          claimed_at?: string | null
+          claimed_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label?: string | null
+          tenant_id?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_invites_claimed_by_fkey"
+            columns: ["claimed_by"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_invites_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_invites_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_records: {
         Row: {
           client_id: string
@@ -1084,6 +1139,50 @@ export type Database = {
           },
         ]
       }
+      stylist_profiles: {
+        Row: {
+          avatar_path: string | null
+          bio: string | null
+          created_at: string
+          display_name: string
+          headline: string | null
+          instagram_handle: string | null
+          is_published: boolean
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          avatar_path?: string | null
+          bio?: string | null
+          created_at?: string
+          display_name?: string
+          headline?: string | null
+          instagram_handle?: string | null
+          is_published?: boolean
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          avatar_path?: string | null
+          bio?: string | null
+          created_at?: string
+          display_name?: string
+          headline?: string | null
+          instagram_handle?: string | null
+          is_published?: boolean
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stylist_profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stylist_settings: {
         Row: {
           arrival_note: string
@@ -1332,6 +1431,7 @@ export type Database = {
     Functions: {
       admin_tenant_ids: { Args: never; Returns: string[] }
       administered_child_tenant_ids: { Args: never; Returns: string[] }
+      claim_client_invite: { Args: { p_token: string }; Returns: string }
       claim_stylist_invitation: { Args: never; Returns: string }
       create_salon: {
         Args: { salon_name: string; salon_timezone?: string }
@@ -1349,6 +1449,7 @@ export type Database = {
         }
         Returns: string
       }
+      offboard_stylist: { Args: { p_chair_id: string }; Returns: undefined }
     }
     Enums: {
       appointment_status:

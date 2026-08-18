@@ -22,22 +22,40 @@ export default function ClientHome() {
   const router = useRouter();
   const [checkingInvite, setCheckingInvite] = useState(true);
 
-  // Someone invited as a stylist signs up like anyone else. Claiming here means
-  // they land in their chair automatically rather than having to be told about
-  // a separate step.
+  // Two kinds of pending invitation resolve here, so a newly signed-up person
+  // never has to be told about a separate step:
+  //   · a stylist invited by the salon owner (matched on email)
+  //   · a client who opened a stylist's link before having an account
   useEffect(() => {
     let active = true;
-    supabase
-      .rpc('claim_stylist_invitation')
-      .then(async ({ data }) => {
-        if (!active) return;
-        if (data) {
-          await refreshMemberships();
-          router.replace('/(app)/staff');
-          return;
+
+    const settle = async () => {
+      const { data: chair } = await supabase.rpc('claim_stylist_invitation');
+      if (!active) return;
+      if (chair) {
+        await refreshMemberships();
+        router.replace('/(app)/staff');
+        return;
+      }
+
+      let pending: string | null = null;
+      try {
+        pending = globalThis.localStorage?.getItem('cosmocutie.pending-invite') ?? null;
+      } catch {
+        // Storage unavailable; nothing to reapply.
+      }
+      if (pending) {
+        await supabase.rpc('claim_client_invite', { p_token: pending });
+        try {
+          globalThis.localStorage?.removeItem('cosmocutie.pending-invite');
+        } catch {
+          // Best effort.
         }
-        setCheckingInvite(false);
-      });
+      }
+      if (active) setCheckingInvite(false);
+    };
+
+    void settle();
     return () => {
       active = false;
     };
@@ -80,6 +98,12 @@ export default function ClientHome() {
               />
             </View>
           </GlassCard>
+
+          <CCButton
+            label="My CosmoCutie"
+            variant="secondary"
+            onPress={() => router.push('/(app)/account')}
+          />
 
           <CCButton label="Sign out" variant="ghost" onPress={signOut} />
         </ScrollView>

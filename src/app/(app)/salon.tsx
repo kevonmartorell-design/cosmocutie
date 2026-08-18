@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/auth/auth-provider';
 import { AmbientBackground } from '@/components/ambient-background';
 import { CCButton } from '@/components/cc-button';
+import { CCModal } from '@/components/cc-modal';
 import { GlassCard } from '@/components/glass-card';
 import { Loading } from '@/components/loading';
 import { spacing, typography } from '@/constants/theme';
@@ -33,6 +34,8 @@ export default function SalonHome() {
   const router = useRouter();
 
   const [chairs, setChairs] = useState<Chair[] | null>(null);
+  const [offboarding, setOffboarding] = useState<Chair | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     if (!adminTenant) return;
@@ -137,6 +140,13 @@ export default function SalonHome() {
                       {c.classification ? ` · ${labelFor(c.classification)}` : ''}
                     </Text>
                   </View>
+                  {c.stylistName ? (
+                    <CCButton
+                      label="Offboard"
+                      variant="ghost"
+                      onPress={() => setOffboarding(c)}
+                    />
+                  ) : null}
                 </View>
               </GlassCard>
             ))
@@ -151,6 +161,35 @@ export default function SalonHome() {
           <CCButton label="Back" variant="ghost" onPress={() => router.back()} />
         </ScrollView>
       </SafeAreaView>
+
+      <CCModal
+        visible={offboarding !== null}
+        title={`Offboard ${offboarding?.stylistName ?? ''}?`}
+        onDismiss={() => setOffboarding(null)}>
+        <Text style={[typography.body, { color: theme.textMuted }]}>
+          They lose access and stop appearing to clients, and their upcoming
+          appointments are cancelled with clients notified.
+        </Text>
+        <Text style={[typography.body, { color: theme.text }]}>
+          Their client book, formulas and history are NOT deleted — that data is
+          theirs and must be exported to them first.
+        </Text>
+        <CCButton
+          label={busy ? 'Working…' : 'Offboard'}
+          variant="danger"
+          fullWidth
+          disabled={busy}
+          onPress={async () => {
+            if (!offboarding) return;
+            setBusy(true);
+            await supabase.rpc('offboard_stylist', { p_chair_id: offboarding.tenantId });
+            setBusy(false);
+            setOffboarding(null);
+            await load();
+          }}
+        />
+        <CCButton label="Cancel" variant="ghost" fullWidth onPress={() => setOffboarding(null)} />
+      </CCModal>
     </AmbientBackground>
   );
 }

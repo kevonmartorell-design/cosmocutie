@@ -163,6 +163,30 @@ export default function ChairHome() {
             </View>
           </GlassCard>
 
+          <Text style={[typography.label, { color: theme.textMuted }]}>YOUR CHAIR</Text>
+          <GlassCard>
+            <View style={styles.card}>
+              <CCButton
+                label="Edit profile"
+                variant="secondary"
+                fullWidth
+                onPress={() => router.push('/(app)/profile')}
+              />
+              <CCButton
+                label="Set your hours"
+                variant="secondary"
+                fullWidth
+                onPress={() => router.push('/(app)/hours')}
+              />
+              <CCButton
+                label="Invite a client"
+                variant="secondary"
+                fullWidth
+                onPress={() => router.push('/(app)/invite-client')}
+              />
+            </View>
+          </GlassCard>
+
           <CCButton label="Back" variant="ghost" onPress={() => router.back()} />
         </ScrollView>
       </SafeAreaView>
