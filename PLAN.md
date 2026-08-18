@@ -309,24 +309,48 @@ The Vercel web preview is unaffected — it runs LokiJS over IndexedDB, pure Jav
 - Worker classification per stylist: **1099 renter / W-2 commission / owner-operator** — drives payment routing in Phase 4
 - Client signup + profile
 
-**Client invitations & deep linking — how stylists bring their existing clientele on.**
+## Invitations — link-first, for both directions
 
-A stylist generates an invite link for a client. Tapping it:
-- **App installed** → opens directly to that stylist's profile, ready to book
-- **App not installed** → App Store / Play Store → and after install, the app still opens to that stylist's profile
+**Every invitation in the app must work as a shareable link, not only as an email.** Two flows, one mechanism:
 
-That second case is **deferred deep linking** — the link's destination survives the install. Without it, a new client lands on a generic home screen with no idea why they're there, and the invite is wasted.
+| Invite | Sent by | Recipient becomes |
+|---|---|---|
+| **Client invite** | a stylist | a client in *that stylist's* book |
+| **Stylist invite** | the salon owner | a stylist with their own chair |
 
-**Technical requirements:**
-- Universal Links (iOS) + App Links (Android) — needs the domain, with the association files hosted at it
-- Deferred deep link attribution to survive the store round-trip
-- **Invite attribution is not cosmetic:** the invited client must land in the inviting stylist's `client_records`, which is what makes the ownership model work in practice
+*Status: client invites are built (token links, claim-after-signup). **Stylist invites are currently email-matched only and need the same token-link treatment.***
 
-**Delivery: generate a shareable link, don't send the message yourself.** The stylist copies the link and sends it through whatever they already use with that client — text, Instagram DM, WhatsApp.
+**Delivery is always "generate a link, the human sends it."** The app copies a link to the clipboard or opens the share sheet; the sender passes it along by text, Instagram DM, WhatsApp — whatever they already use.
 
-⚠️ **This sidesteps a real TCPA problem.** If the *app* sent an SMS invite to someone who never consented, that's an unsolicited commercial message with $500–$1,500 per-message exposure. A stylist texting their own client from their own phone is just a person texting a client — legally unremarkable. **Share-sheet invites are the safe default; app-sent SMS invites would require consent capture before sending, which defeats the purpose of inviting someone new.**
+⚠️ **This is not just convenience, it sidesteps a real TCPA problem.** If the *app* sent an SMS to someone who never consented, that is an unsolicited commercial message carrying $500–$1,500 per-message exposure. A person texting their own contact is legally unremarkable. App-sent invites would require consent capture *before* sending, which defeats the purpose of inviting someone who isn't on the platform yet.
 
-*The same link mechanism serves feed posts, deals, and stylist profiles — any of them should be shareable outward and resolve correctly on the way back in.*
+### The full journey a link has to survive
+
+1. Recipient taps the link on their phone
+2. **App installed** → opens straight to the right destination (that stylist's profile, or the chair invitation)
+3. **App not installed** → lands on a web page → App Store / Play Store → installs → opens → **still resolves to the right stylist**
+
+Step 3 is the hard part and is where most implementations quietly fail.
+
+### ⚠️ iOS does not carry a URL through an App Store install
+
+This is worth knowing before it's budgeted as a small task. When someone installs from the App Store, the app's first launch has no knowledge of the link that sent them there. Two honest options:
+
+**Option A — "tap the link again" (no third-party dependency).** The web landing page says *"Install the app, then tap this link again."* Once installed, Universal Links (iOS) / App Links (Android) route the second tap straight into the app with the token intact. Costs one extra tap; adds no SDK, no vendor, no tracking.
+
+**Option B — a deferred deep-link service** (Branch, AppsFlyer). Genuinely seamless — install and the app opens on the right screen with no second tap. But it means another vendor, another SDK, and fingerprinting-adjacent matching that carries its own privacy considerations.
+
+**Recommendation: Option A.** The extra tap is a small cost against adding a tracking SDK to an app that holds client health-adjacent consent records. Revisit only if invite conversion measurably suffers.
+
+*On web the token already survives the round trip: it's stashed before sign-up and reapplied afterwards, so a link opened in a browser never loses its destination.*
+
+### Requirements
+
+- **A domain** — Universal Links and App Links both need association files hosted on a domain you control. Not yet registered; this is the main thing gating step 2.
+- **Token-based stylist invitations**, matching the client-invite pattern
+- **Attribution is not cosmetic**: an invited client must land in the *inviting stylist's* `client_records`. That is what makes the ownership model real rather than nominal.
+
+*The same link mechanism should serve feed posts, deals, and stylist profiles — anything shareable outward must resolve correctly on the way back in.*
 
 **Exit criteria:** two stylists with genuinely different menus/pricing/hours coexist, isolated, in one salon.
 

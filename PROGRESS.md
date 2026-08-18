@@ -25,6 +25,7 @@ Verified end to end in a browser plus 9 SQL checks. Notably: offboarding deactiv
 
 **Deferred to Phase 5 (needs `expo-image-picker`, a native module → new EAS build):** portfolio photo upload. Bio and Instagram link ship now.
 **Deferred to Phase 7:** in-app account deletion (compliance phase, required before store submission).
+**Follow-up, not yet built:** stylist invitations are email-matched only — they need the same **token-link** treatment client invites already have, so an owner can copy a link and send it any way they like. See PLAN.md → Invitations. Universal/App Links also need a domain.
 
 ---
 
