@@ -52,3 +52,4 @@ example
 
 # Expo web export
 dist/
+.env*

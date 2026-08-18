@@ -179,6 +179,19 @@ Expo Go is faster for day-to-day iteration; TestFlight and internal testing give
 
 **Exit criteria:** the component gallery loads on the Vercel preview *and* on a real iPhone and a real budget Android device, with the light/dark glass toggle working in all three. **This is your first visual review — the aesthetic gets approved here, before any features are built on top of it.**
 
+### ✅ Phase 0 status — web complete, devices pending
+
+**Live preview:** https://cosmocutie.vercel.app
+**Repo:** https://github.com/kevonmartorell-design/cosmocutie
+
+Done and verified in a browser: design tokens, theme provider (system/light/dark, persisted), GlassCard with Android solid fallback, CCButton with spring physics, CCInput with focus/error states, CCModal, AmbientBackground orbs, component gallery, Supabase client, Vercel deploy with env vars.
+
+**Still outstanding before Phase 0 closes:**
+- Load the gallery on a real iPhone and a real budget Android device (`npx expo start`, scan with Expo Go)
+- **Confirm the Android glass fallback looks acceptable** — `GlassCard` deliberately renders a tinted solid surface there rather than a weak blur; that decision needs a human eye on real hardware
+- Confirm mouse-wheel scrolling on desktop web (the element is textbook-scrollable and scrolls programmatically, but browser automation could not drive a wheel event to verify it end to end)
+- Replace the placeholder Expo app icon and splash asset
+
 ---
 
 ## Phase 1 — Data Model & Multi-Tenancy Spine
