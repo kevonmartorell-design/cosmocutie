@@ -1,4 +1,3 @@
-import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Platform, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
@@ -50,16 +49,25 @@ export default function InviteClient() {
     setLink(`${origin}/join/${data.token}`);
   };
 
-  const copy = async () => {
-    if (!link) return;
-    await Clipboard.setStringAsync(link);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
+  /**
+   * Deliberately avoids expo-clipboard. That is a native module, so adding it
+   * would invalidate every installed dev build for the sake of one button —
+   * every device would need a full rebuild rather than an over-the-air update.
+   * The browser Clipboard API and React Native's built-in Share cover both
+   * platforms with no native dependency at all.
+   */
   const share = async () => {
     if (!link) return;
-    if (Platform.OS === 'web') return copy();
+    if (Platform.OS === 'web') {
+      try {
+        await navigator.clipboard.writeText(link);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch {
+        // Clipboard access can be denied; the link is selectable on screen.
+      }
+      return;
+    }
     await Share.share({ message: `Book with me on CosmoCutie: ${link}` });
   };
 
