@@ -212,6 +212,26 @@ Done and verified in a browser: design tokens, theme provider (system/light/dark
 
 **Exit criteria:** schema deployed, RLS verified by attempting cross-tenant reads, local WatermelonDB schema matching.
 
+### 🟡 Phase 1 status — schema and RLS done, two items outstanding
+
+**Done and verified against a local Postgres:** 6 migrations in `supabase/migrations/`, 22 tables, RLS on every one, and 20 adversarial tests in `supabase/tests/` that all pass. Generated TypeScript types wired into the Supabase client.
+
+The headline check: **Dana (holding salon-admin AND stylist roles simultaneously) cannot read Rae's client records, formulas, revenue, appointments, or tags.** Anonymous callers are blocked at the privilege layer before RLS is even consulted.
+
+Two bugs were caught that would otherwise have reached production:
+- **Infinite RLS recursion** — the `client_records` policy queried `clients`, whose policy queried `client_records`. Fixed with a `SECURITY DEFINER` helper.
+- **Missing table GRANTs** — RLS decides which rows; grants decide table access. Policies alone produce "permission denied for table".
+
+Run the suite any time with:
+
+```bash
+npm run db:test
+```
+
+**Outstanding before Phase 1 closes:**
+- **Apply migrations to the hosted Supabase project.** Everything so far is local-only. Needs `npx supabase link --project-ref tihzzdmvjdplmcdscxbh` (asks for the database password) then `npx supabase db push`.
+- **WatermelonDB local schema.** Not yet started. Must exist before Phase 2 screens are written, since retrofitting offline-first is a rewrite rather than a refactor.
+
 ---
 
 ## Phase 2 — Identity & Tenant Onboarding
