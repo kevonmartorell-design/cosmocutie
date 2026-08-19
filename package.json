@@ -53,7 +53,10 @@
     "db:types": "supabase gen types typescript --local > src/lib/database.types.ts",
     "typecheck": "tsc --noEmit",
     "push:dev": "node scripts/check-env.mjs && eas update --branch development --message",
-    "push:list": "eas update:list --branch development --limit 10"
+    "push:list": "eas update:list --branch development --limit 10",
+    "push:preview": "node scripts/check-env.mjs && eas update --branch preview --message",
+    "push:list:preview": "eas update:list --branch preview --limit 10",
+    "build:preview": "eas build --profile preview --platform ios"
   },
   "private": true
 }

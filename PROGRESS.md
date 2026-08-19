@@ -46,8 +46,9 @@ npm run db:test       # reset + seed + 20 adversarial RLS checks
 npm run db:types      # regenerate src/lib/database.types.ts after a migration
 npm run typecheck
 npx expo export --platform web --clear && npx vercel deploy --prod --yes
-npm run push:dev "Phase 3 - booking"   # ship JS to the device, with a readable title
-npm run push:list                      # what has actually been pushed
+npm run build:preview                      # one-time: standalone app for the phone
+npm run push:preview "Phase 4 - payments"  # ship JS to that app, with a readable title
+npm run push:list:preview                  # what has actually been pushed
 ```
 
 **Always pass a short title.** A bare `eas update` takes the entire multi-line commit body as the message, which makes the update list unreadable and impossible to tell apart later.
@@ -66,6 +67,8 @@ Migrations live in `supabase/migrations/`, tests in `supabase/tests/`.
 - **Avoid full-screen `backdrop-filter` on web.** It ghosts on resize in Chromium and reads as the screen rendering twice. The ambient layer uses a CSS `filter` on web instead.
 - **Browser automation cannot drive react-native-web.** `form_input` sets DOM values without updating React state, and synthetic clicks/scrolls often do not reach Pressable. Use the native value setter + `input` event, and ask the user to verify real interaction.
 - **`gen_random_bytes` is not portable.** Locally pgcrypto lands in `public`; on hosted Supabase it lives in `extensions` and is not on the search_path for a DDL default, so a migration passes locally and fails on push. Prefer `gen_random_uuid()`.
+- **Two build profiles, and they behave completely differently.** `development` is a dev-client shell that will not open on its own — it expects `npx expo start --dev-client` running on the Mac. `preview` is a standalone app: tap the icon and it runs, pulling OTA updates from the `preview` branch. **Use preview for reviewing phases**; development only when live-reloading against a local server.
+- **`fallbackToCacheTimeout` was 0 by default**, meaning a published update only appeared the *second* time the app opened. Set to 8000ms so what you just pushed is what you see on first launch.
 - **Never seed `auth.users` by hand.** GoTrue reads its token columns as text and fails on NULL, producing an opaque "Database error querying schema" at sign-in. Create test users through `/auth/v1/signup`, then attach roles with SQL.
 - **PL/pgSQL variables shadow column names.** A local named `weekday` makes `bh.weekday = weekday` ambiguous. Prefix locals (`v_weekday`).
 - **Enum columns need explicit casts from `CASE`.** Postgres infers enums for bare literals but not for a CASE result.
