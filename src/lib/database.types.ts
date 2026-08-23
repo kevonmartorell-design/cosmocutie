@@ -659,6 +659,7 @@ export type Database = {
           signed_by_guardian: boolean
           signed_by_name: string
           tenant_id: string
+          valid_until: string | null
         }
         Insert: {
           appointment_id?: string | null
@@ -677,6 +678,7 @@ export type Database = {
           signed_by_guardian?: boolean
           signed_by_name: string
           tenant_id: string
+          valid_until?: string | null
         }
         Update: {
           appointment_id?: string | null
@@ -695,6 +697,7 @@ export type Database = {
           signed_by_guardian?: boolean
           signed_by_name?: string
           tenant_id?: string
+          valid_until?: string | null
         }
         Relationships: [
           {
@@ -1411,6 +1414,8 @@ export type Database = {
           gap_buffer_minutes: number
           late_cancel_hours: number
           no_show_grace_minutes: number
+          patch_test_min_hours_before: number
+          patch_test_valid_days: number
           prepay_after_no_shows: number
           redo_window_days: number
           requires_deposit: boolean
@@ -1427,6 +1432,8 @@ export type Database = {
           gap_buffer_minutes?: number
           late_cancel_hours?: number
           no_show_grace_minutes?: number
+          patch_test_min_hours_before?: number
+          patch_test_valid_days?: number
           prepay_after_no_shows?: number
           redo_window_days?: number
           requires_deposit?: boolean
@@ -1443,6 +1450,8 @@ export type Database = {
           gap_buffer_minutes?: number
           late_cancel_hours?: number
           no_show_grace_minutes?: number
+          patch_test_min_hours_before?: number
+          patch_test_valid_days?: number
           prepay_after_no_shows?: number
           redo_window_days?: number
           requires_deposit?: boolean
@@ -1654,6 +1663,10 @@ export type Database = {
     Functions: {
       admin_tenant_ids: { Args: never; Returns: string[] }
       administered_child_tenant_ids: { Args: never; Returns: string[] }
+      appointment_needs_patch_test: {
+        Args: { p_appointment_id: string }
+        Returns: boolean
+      }
       available_slots: {
         Args: {
           p_date: string
@@ -1691,6 +1704,7 @@ export type Database = {
       current_tenant_ids: { Args: never; Returns: string[] }
       dispute_evidence: { Args: { p_appointment_id: string }; Returns: Json }
       expire_stale_requests: { Args: never; Returns: number }
+      export_my_book: { Args: { p_tenant_id: string }; Returns: Json }
       gap_slots: {
         Args: {
           p_date: string
@@ -1723,9 +1737,33 @@ export type Database = {
         Args: { p_slot_start: string; p_tenant_id: string }
         Returns: number
       }
+      patch_test_status: {
+        Args: { p_client_record_id: string; p_tenant_id: string }
+        Returns: {
+          expires_at: string
+          is_valid: boolean
+          result: string
+          tested_at: string
+        }[]
+      }
       raise_due_booth_rents: { Args: never; Returns: number }
       record_checkout: {
         Args: { p_appointment_id: string; p_tip_cents?: number }
+        Returns: string
+      }
+      record_consent: {
+        Args: {
+          p_appointment_id?: string
+          p_client_record_id: string
+          p_contraindications_disclosed?: boolean
+          p_document_version: string
+          p_kind: Database["public"]["Enums"]["consent_kind"]
+          p_proceeded?: boolean
+          p_product_tested?: string
+          p_result?: Database["public"]["Enums"]["patch_test_result"]
+          p_signed_by_guardian?: boolean
+          p_signed_by_name: string
+        }
         Returns: string
       }
       record_deposit_intent: {

@@ -2,7 +2,7 @@
 
 Status file for whoever picks this up next. **[PLAN.md](./PLAN.md) is the spec** — it records *why* decisions were made, several of which look arbitrary and are not. Read it before changing behaviour.
 
-_Last updated: Phase 3 complete._
+_Last updated: Phase 5 in progress._
 
 ---
 
@@ -15,7 +15,8 @@ _Last updated: Phase 3 complete._
 | 2 — Identity & tenant onboarding | ✅ done, deployed |
 | 3 — Booking & negotiation | ✅ done |
 | 4 — Payments | 🟡 plumbing done, Stripe integration blocked on account keys |
-| 5+ | not started |
+| 5 — Clinical records | 🟡 forms + colour bar done, photos deferred |
+| 6+ | not started |
 
 **Live:** https://cosmocutie.vercel.app · **Repo:** https://github.com/kevonmartorell-design/cosmocutie
 **Supabase:** `tihzzdmvjdplmcdscxbh` · **EAS:** `@vonalmighty/cosmocutie` · **Bundle:** `com.cosmocutie.app`

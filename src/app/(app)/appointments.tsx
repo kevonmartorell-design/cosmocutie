@@ -200,13 +200,27 @@ export default function Appointments() {
               <Text style={[typography.label, { color: theme.textMuted }]}>PAST</Text>
               {past.slice(0, 10).map((a) => (
                 <GlassCard key={a.id} rounded="md">
-                  <View style={styles.row}>
-                    <Text style={[typography.body, { color: theme.textMuted, flex: 1 }]}>
-                      {formatSlot(a.starts_at)}
-                    </Text>
-                    <Text style={[typography.caption, { color: theme.textMuted }]}>
-                      {a.status.replace('_', ' ')}
-                    </Text>
+                  <View style={styles.card}>
+                    <View style={styles.row}>
+                      <Text style={[typography.body, { color: theme.textMuted, flex: 1 }]}>
+                        {formatSlot(a.starts_at)}
+                      </Text>
+                      <Text style={[typography.caption, { color: theme.textMuted }]}>
+                        {a.status.replace('_', ' ')}
+                      </Text>
+                    </View>
+                    {isStylist(a) && a.status === 'completed' ? (
+                      <CCButton
+                        label="Log formula"
+                        variant="ghost"
+                        onPress={() =>
+                          router.push({
+                            pathname: '/(app)/formula/[appointmentId]',
+                            params: { appointmentId: a.id },
+                          })
+                        }
+                      />
+                    ) : null}
                   </View>
                 </GlassCard>
               ))}
