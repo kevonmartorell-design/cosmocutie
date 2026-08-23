@@ -94,6 +94,10 @@ export type Database = {
           arrived_at: string | null
           buffer_ends_at: string
           buffer_starts_at: string
+          cancellation_fee_cents: number
+          cancellation_outcome:
+            | Database["public"]["Enums"]["cancellation_outcome"]
+            | null
           cancellation_reason: string | null
           cancelled_at: string | null
           cancelled_by: string | null
@@ -105,7 +109,10 @@ export type Database = {
           ends_at: string
           id: string
           is_for_child: boolean
+          pending_requested_by: string | null
+          pending_starts_at: string | null
           redo_of_appointment_id: string | null
+          reschedules_used: number
           service_ended_at: string | null
           service_started_at: string | null
           starts_at: string
@@ -119,6 +126,10 @@ export type Database = {
           arrived_at?: string | null
           buffer_ends_at: string
           buffer_starts_at: string
+          cancellation_fee_cents?: number
+          cancellation_outcome?:
+            | Database["public"]["Enums"]["cancellation_outcome"]
+            | null
           cancellation_reason?: string | null
           cancelled_at?: string | null
           cancelled_by?: string | null
@@ -130,7 +141,10 @@ export type Database = {
           ends_at: string
           id?: string
           is_for_child?: boolean
+          pending_requested_by?: string | null
+          pending_starts_at?: string | null
           redo_of_appointment_id?: string | null
+          reschedules_used?: number
           service_ended_at?: string | null
           service_started_at?: string | null
           starts_at: string
@@ -144,6 +158,10 @@ export type Database = {
           arrived_at?: string | null
           buffer_ends_at?: string
           buffer_starts_at?: string
+          cancellation_fee_cents?: number
+          cancellation_outcome?:
+            | Database["public"]["Enums"]["cancellation_outcome"]
+            | null
           cancellation_reason?: string | null
           cancelled_at?: string | null
           cancelled_by?: string | null
@@ -155,7 +173,10 @@ export type Database = {
           ends_at?: string
           id?: string
           is_for_child?: boolean
+          pending_requested_by?: string | null
+          pending_starts_at?: string | null
           redo_of_appointment_id?: string | null
+          reschedules_used?: number
           service_ended_at?: string | null
           service_started_at?: string | null
           starts_at?: string
@@ -185,6 +206,13 @@ export type Database = {
             columns: ["client_record_id"]
             isOneToOne: false
             referencedRelation: "client_records"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_pending_requested_by_fkey"
+            columns: ["pending_requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -893,6 +921,50 @@ export type Database = {
           },
         ]
       }
+      notification_queue: {
+        Row: {
+          attempts: number
+          body: string
+          created_at: string
+          data: Json
+          id: string
+          last_error: string | null
+          profile_id: string
+          sent_at: string | null
+          title: string
+        }
+        Insert: {
+          attempts?: number
+          body: string
+          created_at?: string
+          data?: Json
+          id?: string
+          last_error?: string | null
+          profile_id: string
+          sent_at?: string | null
+          title: string
+        }
+        Update: {
+          attempts?: number
+          body?: string
+          created_at?: string
+          data?: Json
+          id?: string
+          last_error?: string | null
+          profile_id?: string
+          sent_at?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_queue_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payments: {
         Row: {
           amount_cents: number
@@ -1011,6 +1083,41 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      push_tokens: {
+        Row: {
+          created_at: string
+          id: string
+          last_seen_at: string
+          platform: string
+          profile_id: string
+          token: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_seen_at?: string
+          platform: string
+          profile_id: string
+          token: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_seen_at?: string
+          platform?: string
+          profile_id?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_tokens_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       services: {
         Row: {
@@ -1372,8 +1479,10 @@ export type Database = {
           client_id: string
           created_at: string
           id: string
+          notified_count: number
           offer_expires_at: string | null
           offered_at: string | null
+          offered_slot_start: string | null
           service_id: string | null
           tenant_id: string
           window_ends_on: string
@@ -1384,8 +1493,10 @@ export type Database = {
           client_id: string
           created_at?: string
           id?: string
+          notified_count?: number
           offer_expires_at?: string | null
           offered_at?: string | null
+          offered_slot_start?: string | null
           service_id?: string | null
           tenant_id: string
           window_ends_on: string
@@ -1396,8 +1507,10 @@ export type Database = {
           client_id?: string
           created_at?: string
           id?: string
+          notified_count?: number
           offer_expires_at?: string | null
           offered_at?: string | null
+          offered_slot_start?: string | null
           service_id?: string | null
           tenant_id?: string
           window_ends_on?: string
@@ -1445,6 +1558,10 @@ export type Database = {
           slot_start: string
         }[]
       }
+      cancel_appointment: {
+        Args: { p_appointment_id: string; p_reason?: string }
+        Returns: Database["public"]["Enums"]["cancellation_outcome"]
+      }
       claim_client_invite: { Args: { p_token: string }; Returns: string }
       claim_stylist_invitation: { Args: never; Returns: string }
       create_booking_request: {
@@ -1466,7 +1583,17 @@ export type Database = {
       current_client_ids: { Args: never; Returns: string[] }
       current_tenant_ids: { Args: never; Returns: string[] }
       expire_stale_requests: { Args: never; Returns: number }
-      impersonate: { Args: { em: string; uid: string }; Returns: undefined }
+      gap_slots: {
+        Args: {
+          p_date: string
+          p_duration_minutes: number
+          p_tenant_id: string
+        }
+        Returns: {
+          slot_end: string
+          slot_start: string
+        }[]
+      }
       invite_stylist: {
         Args: {
           p_booth_rent_cents?: number
@@ -1477,11 +1604,24 @@ export type Database = {
         }
         Returns: string
       }
+      mark_no_show: { Args: { p_appointment_id: string }; Returns: undefined }
       materialise_appointment: {
         Args: { p_actor: string; p_request_id: string }
         Returns: string
       }
       offboard_stylist: { Args: { p_chair_id: string }; Returns: undefined }
+      offer_freed_slot: {
+        Args: { p_slot_start: string; p_tenant_id: string }
+        Returns: number
+      }
+      request_appointment_reschedule: {
+        Args: { p_appointment_id: string; p_new_starts_at: string }
+        Returns: undefined
+      }
+      respond_appointment_reschedule: {
+        Args: { p_accept: boolean; p_appointment_id: string }
+        Returns: undefined
+      }
       respond_to_request: {
         Args: {
           p_action: Database["public"]["Enums"]["negotiation_action"]
@@ -1507,6 +1647,7 @@ export type Database = {
         | "declined"
         | "cancelled"
         | "expired"
+      cancellation_outcome: "free" | "fee_charged" | "stylist_cancelled"
       client_tag_kind:
         | "needs_extra_time"
         | "talker"
@@ -1693,6 +1834,7 @@ export const Constants = {
         "cancelled",
         "expired",
       ],
+      cancellation_outcome: ["free", "fee_charged", "stylist_cancelled"],
       client_tag_kind: [
         "needs_extra_time",
         "talker",

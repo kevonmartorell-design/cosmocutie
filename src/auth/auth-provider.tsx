@@ -10,6 +10,7 @@ import {
 } from 'react';
 
 import { supabase } from '@/lib/supabase';
+import { registerForPush, unregisterPush } from '@/notifications/push';
 
 /**
  * A tenant the signed-in user belongs to, and in what capacity.
@@ -132,7 +133,18 @@ export function AuthProvider({ children }: PropsWithChildren) {
     return { error: null, needsConfirmation: !data.session };
   }, []);
 
+  // Register for push once signed in. Deliberately fire-and-forget: a device
+  // that cannot get a token (simulator, permission declined) must still be able
+  // to use the app.
+  useEffect(() => {
+    if (!session) return;
+    void registerForPush();
+  }, [session]);
+
   const signOut = useCallback(async () => {
+    // Drop this device's token first, so a signed-out phone stops receiving
+    // someone else's booking alerts.
+    await unregisterPush();
     await supabase.auth.signOut();
     setMemberships([]);
   }, []);
