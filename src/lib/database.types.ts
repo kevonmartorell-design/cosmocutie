@@ -352,6 +352,54 @@ export type Database = {
           },
         ]
       }
+      booth_rents: {
+        Row: {
+          amount_cents: number
+          chair_id: string
+          created_at: string
+          id: string
+          interval: string
+          is_active: boolean
+          next_due_on: string
+          salon_id: string
+        }
+        Insert: {
+          amount_cents: number
+          chair_id: string
+          created_at?: string
+          id?: string
+          interval?: string
+          is_active?: boolean
+          next_due_on: string
+          salon_id: string
+        }
+        Update: {
+          amount_cents?: number
+          chair_id?: string
+          created_at?: string
+          id?: string
+          interval?: string
+          is_active?: boolean
+          next_due_on?: string
+          salon_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "booth_rents_chair_id_fkey"
+            columns: ["chair_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "booth_rents_salon_id_fkey"
+            columns: ["salon_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       business_hours: {
         Row: {
           closes_at: string
@@ -974,11 +1022,16 @@ export type Database = {
           captured_at: string | null
           client_id: string | null
           created_at: string
+          failure_reason: string | null
           fee_cents: number
           id: string
           kind: Database["public"]["Enums"]["payment_kind"]
+          platform_fee_cents: number
+          refunded_cents: number
           released_at: string | null
+          route: Database["public"]["Enums"]["charge_route"] | null
           status: Database["public"]["Enums"]["payment_status"]
+          stripe_account_id: string | null
           stripe_charge_id: string | null
           stripe_payment_intent_id: string | null
           tenant_id: string
@@ -993,11 +1046,16 @@ export type Database = {
           captured_at?: string | null
           client_id?: string | null
           created_at?: string
+          failure_reason?: string | null
           fee_cents?: number
           id?: string
           kind: Database["public"]["Enums"]["payment_kind"]
+          platform_fee_cents?: number
+          refunded_cents?: number
           released_at?: string | null
+          route?: Database["public"]["Enums"]["charge_route"] | null
           status: Database["public"]["Enums"]["payment_status"]
+          stripe_account_id?: string | null
           stripe_charge_id?: string | null
           stripe_payment_intent_id?: string | null
           tenant_id: string
@@ -1012,11 +1070,16 @@ export type Database = {
           captured_at?: string | null
           client_id?: string | null
           created_at?: string
+          failure_reason?: string | null
           fee_cents?: number
           id?: string
           kind?: Database["public"]["Enums"]["payment_kind"]
+          platform_fee_cents?: number
+          refunded_cents?: number
           released_at?: string | null
+          route?: Database["public"]["Enums"]["charge_route"] | null
           status?: Database["public"]["Enums"]["payment_status"]
+          stripe_account_id?: string | null
           stripe_charge_id?: string | null
           stripe_payment_intent_id?: string | null
           tenant_id?: string
@@ -1170,6 +1233,50 @@ export type Database = {
             foreignKeyName: "services_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stripe_accounts: {
+        Row: {
+          charges_enabled: boolean
+          created_at: string
+          details_submitted: boolean
+          onboarded_at: string | null
+          payouts_enabled: boolean
+          requirements_due: Json
+          stripe_account_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          charges_enabled?: boolean
+          created_at?: string
+          details_submitted?: boolean
+          onboarded_at?: string | null
+          payouts_enabled?: boolean
+          requirements_due?: Json
+          stripe_account_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          charges_enabled?: boolean
+          created_at?: string
+          details_submitted?: boolean
+          onboarded_at?: string | null
+          payouts_enabled?: boolean
+          requirements_due?: Json
+          stripe_account_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stripe_accounts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
@@ -1582,6 +1689,7 @@ export type Database = {
       }
       current_client_ids: { Args: never; Returns: string[] }
       current_tenant_ids: { Args: never; Returns: string[] }
+      dispute_evidence: { Args: { p_appointment_id: string }; Returns: Json }
       expire_stale_requests: { Args: never; Returns: number }
       gap_slots: {
         Args: {
@@ -1594,6 +1702,7 @@ export type Database = {
           slot_start: string
         }[]
       }
+      impersonate: { Args: { em: string; uid: string }; Returns: undefined }
       invite_stylist: {
         Args: {
           p_booth_rent_cents?: number
@@ -1614,6 +1723,19 @@ export type Database = {
         Args: { p_slot_start: string; p_tenant_id: string }
         Returns: number
       }
+      raise_due_booth_rents: { Args: never; Returns: number }
+      record_checkout: {
+        Args: { p_appointment_id: string; p_tip_cents?: number }
+        Returns: string
+      }
+      record_deposit_intent: {
+        Args: {
+          p_amount_cents: number
+          p_payment_intent_id: string
+          p_request_id: string
+        }
+        Returns: string
+      }
       request_appointment_reschedule: {
         Args: { p_appointment_id: string; p_new_starts_at: string }
         Returns: undefined
@@ -1630,6 +1752,18 @@ export type Database = {
           p_request_id: string
         }
         Returns: string
+      }
+      route_for_tenant: {
+        Args: { p_tenant_id: string }
+        Returns: Database["public"]["Enums"]["charge_route"]
+      }
+      settle_deposit: {
+        Args: {
+          p_captured_cents?: number
+          p_outcome: Database["public"]["Enums"]["payment_status"]
+          p_payment_intent_id: string
+        }
+        Returns: undefined
       }
       step_deadline_for: { Args: { p_global: string }; Returns: string }
     }
@@ -1648,6 +1782,7 @@ export type Database = {
         | "cancelled"
         | "expired"
       cancellation_outcome: "free" | "fee_charged" | "stylist_cancelled"
+      charge_route: "direct" | "destination" | "salon"
       client_tag_kind:
         | "needs_extra_time"
         | "talker"
@@ -1835,6 +1970,7 @@ export const Constants = {
         "expired",
       ],
       cancellation_outcome: ["free", "fee_charged", "stylist_cancelled"],
+      charge_route: ["direct", "destination", "salon"],
       client_tag_kind: [
         "needs_extra_time",
         "talker",
