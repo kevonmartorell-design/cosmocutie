@@ -14,7 +14,8 @@ _Last updated: Phase 3 complete._
 | 1 — Schema, RLS, WatermelonDB | ✅ done, deployed |
 | 2 — Identity & tenant onboarding | ✅ done, deployed |
 | 3 — Booking & negotiation | ✅ done |
-| 4+ | not started |
+| 4 — Payments | 🟡 plumbing done, Stripe integration blocked on account keys |
+| 5+ | not started |
 
 **Live:** https://cosmocutie.vercel.app · **Repo:** https://github.com/kevonmartorell-design/cosmocutie
 **Supabase:** `tihzzdmvjdplmcdscxbh` · **EAS:** `@vonalmighty/cosmocutie` · **Bundle:** `com.cosmocutie.app`
@@ -70,6 +71,8 @@ Migrations live in `supabase/migrations/`, tests in `supabase/tests/`.
 - **Avoid full-screen `backdrop-filter` on web.** It ghosts on resize in Chromium and reads as the screen rendering twice. The ambient layer uses a CSS `filter` on web instead.
 - **Browser automation cannot drive react-native-web.** `form_input` sets DOM values without updating React state, and synthetic clicks/scrolls often do not reach Pressable. Use the native value setter + `input` event, and ask the user to verify real interaction.
 - **`gen_random_bytes` is not portable.** Locally pgcrypto lands in `public`; on hosted Supabase it lives in `extensions` and is not on the search_path for a DDL default, so a migration passes locally and fails on push. Prefer `gen_random_uuid()`.
+- **PL/pgSQL locals shadow column names — this has bitten twice.** A local called `weekday` broke `available_slots`; one called `id` broke `record_deposit_intent` with "column reference is ambiguous". Prefix every local `v_`.
+- **A statement sees one snapshot.** Calling a function and checking the row it changed *in the same statement* reads the pre-change value. Split into two statements — this has produced three false failures in tests so far.
 - **`search_path = ''` in SECURITY DEFINER functions means every type must be schema-qualified** (`public.my_enum`, not `my_enum`). The empty search_path is a deliberate privilege-escalation guard, so this is the price of it.
 - **`supabase/functions` must be excluded from tsconfig.** Edge functions are Deno, with different globals and module resolution; typechecking them against the app config produces noise, not signal.
 - **Two build profiles, and they behave completely differently.** `development` is a dev-client shell that will not open on its own — it expects `npx expo start --dev-client` running on the Mac. `preview` is a standalone app: tap the icon and it runs, pulling OTA updates from the `preview` branch. **Use preview for reviewing phases**; development only when live-reloading against a local server.
