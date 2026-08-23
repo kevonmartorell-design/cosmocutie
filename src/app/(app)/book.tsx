@@ -43,6 +43,7 @@ export default function Book() {
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [joined, setJoined] = useState(false);
 
   useEffect(() => {
     supabase
@@ -86,8 +87,30 @@ export default function Book() {
   }, [stylist, day, totalMinutes]);
 
   useEffect(() => {
+    setJoined(false);
     void loadSlots();
   }, [loadSlots]);
+
+  const joinWaitlist = async () => {
+    if (!stylist) return;
+    setBusy(true);
+    setError(null);
+    const from = day.toISOString().slice(0, 10);
+    const to = new Date(day.getTime() + 13 * 86400000).toISOString().slice(0, 10);
+    const { error: err } = await supabase.from('waitlist_entries').insert({
+      tenant_id: stylist.tenant_id,
+      client_id: (await supabase.from('clients').select('id').maybeSingle()).data?.id as string,
+      service_id: picked[0] ?? null,
+      window_starts_on: from,
+      window_ends_on: to,
+    });
+    setBusy(false);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    setJoined(true);
+  };
 
   const request = async (slot: Slot) => {
     if (!stylist) return;
@@ -198,9 +221,21 @@ export default function Book() {
                 <Text style={[typography.caption, { color: theme.textMuted }]}>Checking…</Text>
               ) : slots.length === 0 ? (
                 <GlassCard>
-                  <Text style={[typography.body, { color: theme.textMuted }]}>
-                    Nothing open that day. Try another.
-                  </Text>
+                  <View style={{ gap: spacing.sm }}>
+                    <Text style={[typography.body, { color: theme.textMuted }]}>
+                      Nothing open that day.
+                    </Text>
+                    <CCButton
+                      label={joined ? 'On the waitlist' : 'Join the waitlist'}
+                      variant={joined ? 'ghost' : 'secondary'}
+                      disabled={joined || busy}
+                      onPress={joinWaitlist}
+                    />
+                    <Text style={[typography.caption, { color: theme.textMuted }]}>
+                      If someone cancels, the first few on the list get 30 minutes
+                      to claim the slot.
+                    </Text>
+                  </View>
                 </GlassCard>
               ) : (
                 <View style={styles.slots}>

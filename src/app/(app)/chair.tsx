@@ -173,6 +173,12 @@ export default function ChairHome() {
                 onPress={() => router.push('/(app)/requests')}
               />
               <CCButton
+                label="Appointments"
+                variant="secondary"
+                fullWidth
+                onPress={() => router.push('/(app)/appointments')}
+              />
+              <CCButton
                 label="Edit profile"
                 variant="secondary"
                 fullWidth

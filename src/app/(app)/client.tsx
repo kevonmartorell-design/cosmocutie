@@ -86,6 +86,11 @@ export default function ClientHome() {
                 onPress={() => router.push('/(app)/book')}
               />
               <CCButton
+                label="My appointments"
+                variant="secondary"
+                onPress={() => router.push('/(app)/appointments')}
+              />
+              <CCButton
                 label="My requests"
                 variant="ghost"
                 onPress={() => router.push('/(app)/requests')}
