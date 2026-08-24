@@ -39,7 +39,15 @@ Deno.serve(async (req) => {
   if (!verified.ok) {
     // 400, not 500: a bad signature is not a transient failure and Stripe
     // should not retry it.
-    console.error('[stripe-webhook] rejected:', verified.error);
+    //
+    // The COUNT of configured secrets is logged, never a value. This endpoint
+    // serves two Stripe destinations with a secret each, and the commonest way
+    // it breaks is one of them missing from STRIPE_WEBHOOK_SECRET — at which
+    // point half the events fail signature checks and the cause is invisible.
+    // "tried 1 secret" versus "tried 2 secrets" answers that instantly.
+    console.error(
+      `[stripe-webhook] rejected: ${verified.error} (tried ${secrets.length} configured secret${secrets.length === 1 ? '' : 's'})`,
+    );
     return json({ error: 'signature verification failed' }, 400);
   }
 

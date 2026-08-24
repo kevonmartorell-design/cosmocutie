@@ -137,18 +137,23 @@ destination. Booth rent is charged on the platform, so it fires there. A single
 platform-scope endpoint would have reconciled rent and silently ignored every
 deposit.
 
-**THE ONE THING STILL OUTSTANDING — payments do not reconcile until this is done:**
+✅ **`STRIPE_WEBHOOK_SECRET` is set**, comma-separated, one secret per
+destination. Verified live:
 
-Stripe issues each destination its OWN signing secret, and the function takes
-both as a comma-separated list.
+- Two real Stripe events (`stripe trigger payment_intent.succeeded`) delivered
+  to the **platform** destination and returned **200 OK** — signature verified,
+  event ledger claimed, handler ran.
+- A deliberately forged signature returned **400** and logged
+  `rejected: signature mismatch (tried 2 configured secrets)` — confirming BOTH
+  secrets parsed, not just one.
 
-1. Open https://dashboard.stripe.com/test/workbench/webhooks
-2. Click **CosmoCutie platform** → under **Signing secret**, click the eye icon → copy it
-3. Click **CosmoCutie connected accounts** → same → copy that one too
-4. Set both, comma-separated, no space:
-```bash
-npx supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_PLATFORM,whsec_CONNECTED
-```
+⚠️ **The connected-accounts secret is present but not yet proven correct.**
+Firing an event on a connected account needs a stylist who has completed Connect
+onboarding, and none has. `stripe trigger --stripe-account …` does NOT work for
+this — the Workbench shell ignores the flag and the event lands on the platform
+destination instead. The first real deposit is the test. If it fails, the
+webhook log will say `tried N configured secrets` and the delivery will show
+400 rather than 200.
 
 **d) ✅ Done — both workers are scheduled** (`Integrations → Cron`):
 - `drain-payment-jobs` — every minute → `payment-worker`. Verified booting once a minute.
