@@ -15,6 +15,8 @@
     "expo-font": "~57.0.1",
     "expo-glass-effect": "~57.0.1",
     "expo-image": "~57.0.3",
+    "expo-image-manipulator": "~57.0.13",
+    "expo-image-picker": "~57.0.13",
     "expo-linking": "~57.0.6",
     "expo-notifications": "~57.0.13",
     "expo-router": "~57.0.14",
@@ -64,7 +66,8 @@
     "functions:serve": "supabase functions serve --env-file supabase/functions/.env",
     "functions:serve:recorded": "supabase functions serve --env-file supabase/functions/.env.recorded",
     "test:shapes": "node supabase/tests/request_shape_test.mjs",
-    "test:storage": "node supabase/tests/storage_e2e_test.mjs"
+    "test:storage": "node supabase/tests/storage_e2e_test.mjs",
+    "test:photos": "node --experimental-strip-types supabase/tests/resize_policy_test.ts"
   },
   "private": true
 }

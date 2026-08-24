@@ -15,7 +15,7 @@ Status file for whoever picks this up next.
 | 2 — Identity, onboarding, invitations | ✅ done |
 | 3 — Booking, negotiation, notifications | ✅ done |
 | 4 — Payments | 🟢 built, deployed, and live — no real money has moved through it yet |
-| 5 — Clinical records | 🟡 forms + colour bar done, photos deferred |
+| 5 — Clinical records | 🟡 forms, colour bar, and photos done — needs an `eas build`; data export outstanding |
 | 6 — Offline sync | ⬜ not started |
 | 7 — Compliance & store readiness | ⬜ not started |
 | 8+ — Deals, feed, ecosystem, shop | ⬜ not started |
@@ -23,7 +23,7 @@ Status file for whoever picks this up next.
 **Live:** https://cosmocutie.vercel.app · **Repo:** https://github.com/kevonmartorell-design/cosmocutie
 **Supabase:** `tihzzdmvjdplmcdscxbh` · **EAS:** `@vonalmighty/cosmocutie` · **Bundle:** `com.cosmocutie.app`
 
-**24 migrations, all on the hosted project.** ~230 assertions across 17 SQL suites,
+**25 migrations — 24 on the hosted project, migration 25 (photo storage) is local only and still needs `npx supabase db push`.** ~230 assertions across 17 SQL suites,
 plus 71 edge-function assertions and 19 on the exact request bodies sent to Stripe.
 
 ---
@@ -45,10 +45,20 @@ this list is waiting on a deploy.
 | Cron: `drain-notification-queue` (1 min) | ✅ running |
 | Cron: expiry, waitlist, booth rent (SQL) | ✅ running |
 | App JS on the phone | ✅ OTA `Phase 4 payments — deposits, checkout, booth rent` |
+| Photo capture | ⚠️ **built but NOT on the phone — needs `npm run build:preview`** |
 
-The last OTA is newer than the last commit under `src/`, so the phone matches the
-repo. **No `eas build` is outstanding** — nothing native has been added since the
-current preview build.
+⚠️ **An `eas build` IS now outstanding.** Phase 5 photos added two native
+modules — `expo-image-picker` and `expo-image-manipulator` — so photo capture
+cannot reach the phone over the air. Everything else on the phone is current.
+
+```bash
+npx supabase db push        # migration 25 first, or the app queries a bucket that does not exist
+npm run build:preview       # then the build
+```
+
+The build also picks up the iOS camera and photo-library usage strings added to
+`app.json`. Without those iOS kills the app the moment the camera opens, and it
+is a native crash no JS error handler can catch.
 
 ### What is NOT shipped, and why
 
@@ -59,7 +69,7 @@ current preview build.
 | **`PLATFORM_FEE_BPS` is 0** | Nobody has decided the rate. The platform currently takes nothing. |
 | **`collect_rent` never charged anything** | Rent is raised daily by cron, but no chair has saved a card yet. |
 | **PaymentSheet (in-app card entry)** | Deliberate — it is a native module. The hosted Stripe page does the same job and ships OTA. |
-| **Phase 5 photos** | Not started. Would batch with PaymentSheet for one build. |
+| **Phase 5 data export** | Not started. Renters must be able to export their client book — the no-lock-in principle in PLAN.md. |
 | **Real transactional email** | Needs a domain + Resend. Hosted Supabase sends ~3/hour, which is fine for testing and not for users. |
 | **v2 Connect account events** | Not subscribed. They use thin payloads the handler cannot read yet — see the gotcha. |
 

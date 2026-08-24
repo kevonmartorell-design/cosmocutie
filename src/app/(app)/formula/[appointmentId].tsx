@@ -9,6 +9,7 @@ import { CCInput } from '@/components/cc-input';
 import { GlassCard } from '@/components/glass-card';
 import { spacing, typography } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { PhotoGallery } from '@/photos/photo-gallery';
 import { useTheme } from '@/theme/theme-provider';
 
 type Component = { product: string; grams: string };
@@ -149,6 +150,13 @@ export default function FormulaEntry() {
               />
             </View>
           </GlassCard>
+
+          {/* Attached to the appointment, so they are worth taking whether or
+              not a formula is written — and they survive if the stylist backs
+              out of the form. */}
+          {ctx && appointmentId ? (
+            <PhotoGallery appointmentId={appointmentId} tenantId={ctx.tenant_id} />
+          ) : null}
 
           <CCButton label="Cancel" variant="ghost" onPress={() => router.back()} />
         </ScrollView>
