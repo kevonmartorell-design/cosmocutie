@@ -67,7 +67,8 @@
     "functions:serve:recorded": "supabase functions serve --env-file supabase/functions/.env.recorded",
     "test:shapes": "node supabase/tests/request_shape_test.mjs",
     "test:storage": "node supabase/tests/storage_e2e_test.mjs",
-    "test:photos": "node --experimental-strip-types supabase/tests/resize_policy_test.ts"
+    "test:photos": "node --experimental-strip-types supabase/tests/resize_policy_test.ts",
+    "test:export": "node supabase/tests/export_e2e_test.mjs"
   },
   "private": true
 }

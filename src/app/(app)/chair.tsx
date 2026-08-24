@@ -9,6 +9,7 @@ import { CCButton } from '@/components/cc-button';
 import { GlassCard } from '@/components/glass-card';
 import { Loading } from '@/components/loading';
 import { spacing, typography } from '@/constants/theme';
+import { openExportFile, requestDataExport, type ExportFile } from '@/data/export';
 import { startPayoutOnboarding, startRentBilling } from '@/payments/checkout';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/theme/theme-provider';
@@ -59,6 +60,9 @@ export default function ChairHome() {
   const [rent, setRent] = useState<Rent | null>(null);
   const [rentCard, setRentCard] = useState<RentCard | null>(null);
   const [savingCard, setSavingCard] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportFiles, setExportFiles] = useState<ExportFile[] | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!tenant) return;
@@ -117,6 +121,20 @@ export default function ChairHome() {
     // Readiness is mirrored back by Stripe's account.updated webhook, so what
     // matters after the browser closes is what the database now says.
     await load();
+  };
+
+  const runExport = async () => {
+    if (!tenant) return;
+    setExporting(true);
+    setExportError(null);
+    setExportFiles(null);
+    const result = await requestDataExport(tenant.tenantId);
+    setExporting(false);
+    if (result.status === 'error') {
+      setExportError(result.message);
+      return;
+    }
+    setExportFiles(result.files);
   };
 
   const saveRentCard = async () => {
@@ -397,6 +415,51 @@ export default function ChairHome() {
                 fullWidth
                 onPress={() => router.push('/(app)/invite-client')}
               />
+            </View>
+          </GlassCard>
+
+          {/* No lock-in. A stylist whose client book is trapped inside their
+              landlord's app is a stylist whose landlord controls their
+              business — which is exactly what the tenant model exists to
+              prevent, so the way out has to be a visible button. */}
+          <Text style={[typography.label, { color: theme.textMuted }]}>YOUR DATA</Text>
+          <GlassCard>
+            <View style={styles.card}>
+              <Text style={[typography.heading, { color: theme.text }]}>Export everything</Text>
+              <Text style={[typography.caption, { color: theme.textMuted }]}>
+                Your clients, appointments, colour formulas, consents and takings —
+                as spreadsheets and a full data file. It is your book; you can take
+                it with you at any time.
+              </Text>
+
+              <CCButton
+                label={exporting ? 'Building your export…' : 'Export my data'}
+                variant="secondary"
+                fullWidth
+                disabled={exporting}
+                onPress={runExport}
+              />
+
+              {exportFiles?.length ? (
+                <>
+                  <Text style={[typography.caption, { color: theme.primary }]}>
+                    Ready. Tap a file to download it — links last one hour.
+                  </Text>
+                  {exportFiles.map((f) => (
+                    <CCButton
+                      key={f.name}
+                      label={f.name}
+                      variant="ghost"
+                      fullWidth
+                      onPress={() => openExportFile(f.url)}
+                    />
+                  ))}
+                </>
+              ) : null}
+
+              {exportError ? (
+                <Text style={[typography.caption, { color: theme.danger }]}>{exportError}</Text>
+              ) : null}
             </View>
           </GlassCard>
 

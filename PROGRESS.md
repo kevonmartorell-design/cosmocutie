@@ -15,7 +15,7 @@ Status file for whoever picks this up next.
 | 2 — Identity, onboarding, invitations | ✅ done |
 | 3 — Booking, negotiation, notifications | ✅ done |
 | 4 — Payments | 🟢 built, deployed, and live — no real money has moved through it yet |
-| 5 — Clinical records | 🟡 forms, colour bar, and photos done — needs an `eas build`; data export outstanding |
+| 5 — Clinical records | ✅ done — forms, colour bar, photos, and renter data export |
 | 6 — Offline sync | ⬜ not started |
 | 7 — Compliance & store readiness | ⬜ not started |
 | 8+ — Deals, feed, ecosystem, shop | ⬜ not started |
@@ -23,7 +23,7 @@ Status file for whoever picks this up next.
 **Live:** https://cosmocutie.vercel.app · **Repo:** https://github.com/kevonmartorell-design/cosmocutie
 **Supabase:** `tihzzdmvjdplmcdscxbh` · **EAS:** `@vonalmighty/cosmocutie` · **Bundle:** `com.cosmocutie.app`
 
-**25 migrations — 24 on the hosted project, migration 25 (photo storage) is local only and still needs `npx supabase db push`.** ~230 assertions across 17 SQL suites,
+**26 migrations — 25 on the hosted project, migration 26 (data export) is local only and still needs `npx supabase db push`.** ~230 assertions across 17 SQL suites,
 plus 71 edge-function assertions and 19 on the exact request bodies sent to Stripe.
 
 ---
@@ -45,20 +45,22 @@ this list is waiting on a deploy.
 | Cron: `drain-notification-queue` (1 min) | ✅ running |
 | Cron: expiry, waitlist, booth rent (SQL) | ✅ running |
 | App JS on the phone | ✅ OTA `Phase 4 payments — deposits, checkout, booth rent` |
-| Photo capture | ⚠️ **built but NOT on the phone — needs `npm run build:preview`** |
+| Photo capture | ✅ native build done, on the phone |
+| Data export | ⚠️ **built — needs migration 26 pushed, `export-data` deployed, and an OTA** |
 
-⚠️ **An `eas build` IS now outstanding.** Phase 5 photos added two native
-modules — `expo-image-picker` and `expo-image-manipulator` — so photo capture
-cannot reach the phone over the air. Everything else on the phone is current.
+**No `eas build` outstanding.** Photos needed one (two native modules) and it is
+done. The data export deliberately adds none — it writes files server-side and
+hands back signed links, so it ships over the air. Saving to the device would
+have meant `expo-file-system` and `expo-sharing`, and neither is worth a rebuild
+for something run once a year.
+
+To ship the export, in this order:
 
 ```bash
-npx supabase db push        # migration 25 first, or the app queries a bucket that does not exist
-npm run build:preview       # then the build
+npx supabase db push                              # migration 26 (bucket + RPC)
+npx supabase functions deploy export-data
+npm run push:preview "Phase 5 - renter data export"
 ```
-
-The build also picks up the iOS camera and photo-library usage strings added to
-`app.json`. Without those iOS kills the app the moment the camera opens, and it
-is a native crash no JS error handler can catch.
 
 ### What is NOT shipped, and why
 
@@ -69,7 +71,7 @@ is a native crash no JS error handler can catch.
 | **`PLATFORM_FEE_BPS` is 0** | Nobody has decided the rate. The platform currently takes nothing. |
 | **`collect_rent` never charged anything** | Rent is raised daily by cron, but no chair has saved a card yet. |
 | **PaymentSheet (in-app card entry)** | Deliberate — it is a native module. The hosted Stripe page does the same job and ships OTA. |
-| **Phase 5 data export** | Not started. Renters must be able to export their client book — the no-lock-in principle in PLAN.md. |
+| **Phase 6 offline sync** | Not started. WatermelonDB is wired but not syncing. |
 | **Real transactional email** | Needs a domain + Resend. Hosted Supabase sends ~3/hour, which is fine for testing and not for users. |
 | **v2 Connect account events** | Not subscribed. They use thin payloads the handler cannot read yet — see the gotcha. |
 
@@ -253,8 +255,16 @@ step proves the one before it:
 - Payment intents are still v1 form-encoded. The `stripeV1` helper takes `stripeAccount` and `idempotencyKey` — **always pass an idempotency key on anything that moves money.**
 - **A Checkout Session's `payment_intent` may be null at creation.** So the deposit is recorded by the *webhook* on `checkout.session.completed`, not when the session is opened — which is more honest anyway: a session that was opened is not a deposit that was authorised.
 
-### 2. Phase 5 leftovers
-Photo capture for before/processing/after galleries. `formula_photos` table and per-photo consent columns already exist.
+### 2. Phase 5 — done
+Photos, the colour bar, consent capture, and renter data export are all built
+and tested. The export writes JSON plus per-table CSVs to a private,
+tenant-scoped bucket and hands back signed links; photos come as a
+`photo-links.csv` manifest rather than a zip, because zipping in Deno is a lot
+of machinery for a once-a-year operation.
+
+Exports are swept after 7 days by the `purge-stale-exports` cron. A finished
+export is a renter's entire client book sitting in a bucket — useful for an
+hour, a liability for a year.
 
 ### 3. Known cleanup
 - `src/app/(app)/setup-salon.tsx` is orphaned — salon creation moved into the sign-up flow. Nothing links to it.
@@ -310,6 +320,7 @@ Photo capture for before/processing/after galleries. `formula_photos` table and 
   Shell vars win over `.env`, so nothing in the repo changes. Seed users through `/auth/v1/signup`, never by hand.
 - **The whole Stripe-to-database path is testable without Stripe.** The webhook authenticates by a signature we can produce ourselves, so `npm run test:edge` drives the real Deno runtime and the real database with no key involved.
 - **A 401 from Stripe proves nothing about your request.** An invalid key is rejected *before* any parameter is validated, so a mistyped parameter name and a bad key fail identically. `STRIPE_API_BASE` points the functions at a local recorder so the request body itself can be asserted — that is what `npm run test:shapes` does. Caught a `payment_intent_data` on a setup-mode session, which is a 400 at Stripe and looks like nothing locally.
+- **Signed URLs built inside an edge function use the URL the FUNCTION sees.** Locally that is `http://kong:8000`, which is unreachable from the host, so a local test has to rewrite the host. In production `SUPABASE_URL` is the real project URL and the links are correct — it is a testing accommodation, not a bug being papered over.
 - **`supabase functions serve --env-file` REPLACES the environment.** Shell variables do not reach the Deno container, so a test-only override has to live in its own env file (`supabase/functions/.env.recorded`), not be exported before the command.
 
 ---
