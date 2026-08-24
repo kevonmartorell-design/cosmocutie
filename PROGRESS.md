@@ -105,12 +105,29 @@ npx supabase functions deploy stripe-checkout stripe-webhook payment-worker stri
 
 **c) ✅ Done — two webhook destinations exist in Stripe**
 
-Both point at `https://tihzzdmvjdplmcdscxbh.supabase.co/functions/v1/stripe-webhook`:
+In sandbox **CosmoCutie sandbox** = `acct_1U7mD6I7PIoulqv7`, which is the account
+the app's keys belong to. Both point at
+`https://tihzzdmvjdplmcdscxbh.supabase.co/functions/v1/stripe-webhook`:
 
-| Destination | Scope | Events |
-|---|---|---|
-| CosmoCutie platform | Your account | 10 — booth rent, rent card setup, Connect readiness |
-| CosmoCutie connected accounts | Connected accounts | 6 — deposits, capture, release, refunds, disputes |
+| Destination | Scope | Events | ID |
+|---|---|---|---|
+| CosmoCutie platform | Your account | 10 — booth rent, rent card setup, Connect readiness | `we_1U85ZXI7PIoulqv7zjrzIX1Z` |
+| CosmoCutie connected accounts | Connected accounts | 6 — deposits, capture, release, refunds, disputes | `we_1U85bPI7PIoulqv7oMa60gbD` |
+
+⚠️ **Check the account id before touching anything in the Stripe dashboard.**
+This org has more than one sandbox — "CosmoCutie" (`acct_1U7mCwIt3hk81Wm1`) and
+"CosmoCutie sandbox" (`acct_1U7mD6I7PIoulqv7`). Navigating to
+`dashboard.stripe.com/test/...` without an account id drops you into whichever
+was last active, and both are titled plausibly. The app's account is the one
+encoded in its own publishable key:
+
+```bash
+grep -o 'pk_test_[A-Za-z0-9]*' eas.json | head -1 | cut -c10-25   # -> 1U7mD6I7PIoulqv7
+```
+
+A first pass created both destinations in the wrong sandbox. They are inert
+there (nothing in that account ever fires) but should be deleted:
+`we_1U7xKAIt3hk81Wm1T1R707Ql` and `we_1U7xLhIt3hk81Wm1hJ401BZi`.
 
 ⚠️ **Two destinations, not one, and this is not optional.** Deposits and the
 closing balance are DIRECT charges on the stylist's own connected account —
