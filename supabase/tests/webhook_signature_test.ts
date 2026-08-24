@@ -51,5 +51,23 @@ await check('no v1 entry rejected',
 await check('accepts when one of several v1 matches',
   verifyStripeSignature(body, `t=${now},v1=${'b'.repeat(64)},v1=${sign(now, body)}`, SECRET), true);
 
+// One endpoint serves two Stripe destinations — platform-scope and
+// connected-account — and Stripe issues each its own secret. A verifier that
+// only knew one would silently reject every event from the other, which is a
+// webhook that looks healthy and reconciles half the money.
+const OTHER = 'whsec_the_other_destination_secret';
+
+await check('accepts the first of two secrets',
+  verifyStripeSignature(body, `t=${now},v1=${sign(now, body)}`, [SECRET, OTHER]), true);
+
+await check('accepts the second of two secrets',
+  verifyStripeSignature(body, `t=${now},v1=${sign(now, body, OTHER)}`, [SECRET, OTHER]), true);
+
+await check('still rejects a secret on neither list',
+  verifyStripeSignature(body, `t=${now},v1=${sign(now, body, 'whsec_nope')}`, [SECRET, OTHER]), false);
+
+await check('a single secret still works unchanged',
+  verifyStripeSignature(body, `t=${now},v1=${sign(now, body)}`, SECRET), true);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

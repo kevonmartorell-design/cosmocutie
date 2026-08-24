@@ -116,7 +116,7 @@ export async function stripeV1<T>(
 export async function verifyStripeSignature(
   rawBody: string,
   signatureHeader: string | null,
-  secret: string,
+  secret: string | string[],
   toleranceSeconds = 300,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!signatureHeader) return { ok: false, error: 'missing Stripe-Signature header' };
@@ -139,26 +139,38 @@ export async function verifyStripeSignature(
     return { ok: false, error: 'timestamp outside tolerance' };
   }
 
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  );
-  const mac = await crypto.subtle.sign(
-    'HMAC',
-    key,
-    new TextEncoder().encode(`${timestamp}.${rawBody}`),
-  );
-  const expected = [...new Uint8Array(mac)]
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
+  // One secret per DESTINATION, and this endpoint serves two: platform-scope
+  // events (booth rent, rent cards, Connect readiness) and connected-account
+  // events (the direct charges that keep a 1099 renter merchant of record).
+  // Stripe issues each destination its own secret, so a single-secret verifier
+  // would silently reject every event from whichever one it was not given.
+  const secrets = Array.isArray(secret) ? secret : [secret];
 
-  // Stripe sends more than one v1 when an endpoint secret is being rotated, so
-  // any match counts. Every candidate is compared in full.
-  const match = signatures.some((candidate) => timingSafeEqual(candidate, expected));
-  return match ? { ok: true } : { ok: false, error: 'signature mismatch' };
+  for (const candidateSecret of secrets) {
+    const key = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(candidateSecret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign'],
+    );
+    const mac = await crypto.subtle.sign(
+      'HMAC',
+      key,
+      new TextEncoder().encode(`${timestamp}.${rawBody}`),
+    );
+    const expected = [...new Uint8Array(mac)]
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+
+    // Stripe sends more than one v1 when an endpoint secret is being rotated,
+    // so any match counts. Every candidate is compared in full.
+    if (signatures.some((candidate) => timingSafeEqual(candidate, expected))) {
+      return { ok: true };
+    }
+  }
+
+  return { ok: false, error: 'signature mismatch' };
 }
 
 /** Constant time for equal-length inputs; length alone is not a secret here. */

@@ -103,18 +103,42 @@ npx supabase db push
 npx supabase functions deploy stripe-checkout stripe-webhook payment-worker stripe-billing
 ```
 
-**c) Create the webhook endpoint in Stripe**
-1. Go to https://dashboard.stripe.com/test/workbench/webhooks
-2. Click **Add endpoint**
-3. URL: `https://tihzzdmvjdplmcdscxbh.supabase.co/functions/v1/stripe-webhook`
-4. Under **Select events**, add: `checkout.session.completed`, `payment_intent.succeeded`, `payment_intent.canceled`, `payment_intent.payment_failed`, `charge.refunded`, `charge.dispute.created`, `account.updated`, `setup_intent.succeeded`, `payment_method.attached`, `payment_method.detached`
-5. Click **Add endpoint**, then **Reveal** the signing secret (starts `whsec_`)
-6. Set it — never paste it into a file in this repo:
+**c) ✅ Done — two webhook destinations exist in Stripe**
+
+Both point at `https://tihzzdmvjdplmcdscxbh.supabase.co/functions/v1/stripe-webhook`:
+
+| Destination | Scope | Events |
+|---|---|---|
+| CosmoCutie platform | Your account | 10 — booth rent, rent card setup, Connect readiness |
+| CosmoCutie connected accounts | Connected accounts | 6 — deposits, capture, release, refunds, disputes |
+
+⚠️ **Two destinations, not one, and this is not optional.** Deposits and the
+closing balance are DIRECT charges on the stylist's own connected account —
+that is what keeps a 1099 renter merchant of record — so those events fire on
+the connected account and are only delivered to a "Connected accounts"
+destination. Booth rent is charged on the platform, so it fires there. A single
+platform-scope endpoint would have reconciled rent and silently ignored every
+deposit.
+
+**THE ONE THING STILL OUTSTANDING — payments do not reconcile until this is done:**
+
+Stripe issues each destination its OWN signing secret, and the function takes
+both as a comma-separated list.
+
+1. Open https://dashboard.stripe.com/test/workbench/webhooks
+2. Click **CosmoCutie platform** → under **Signing secret**, click the eye icon → copy it
+3. Click **CosmoCutie connected accounts** → same → copy that one too
+4. Set both, comma-separated, no space:
 ```bash
-npx supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_paste_here
+npx supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_PLATFORM,whsec_CONNECTED
 ```
 
-**d) Schedule the worker** — same place `send-push` is scheduled. Every minute. Without it, holds are authorised and never captured or released, and rent is raised but never charged.
+**d) ✅ Done — both workers are scheduled** (`Integrations → Cron`):
+- `drain-payment-jobs` — every minute → `payment-worker`. Verified booting once a minute.
+- `drain-notification-queue` — every minute → `send-push`. **This had never been scheduled**, so every push notification since Phase 3 has been queuing with nothing draining it.
+
+Both needed the `pg_net` extension, which was not installed — that is why
+`send-push` could never be scheduled. It is installed now.
 
 **e) Decide the platform fee.** `PLATFORM_FEE_BPS` on the edge functions, in basis points, currently **0** — the platform takes nothing. PLAN.md mentions 10% as a line item but never fixed a booking rate, so shipping a silent cut seemed worse than shipping none. When you decide: `npx supabase secrets set PLATFORM_FEE_BPS=1000` for 10%. It is charged on the service, never on the tip.
 
@@ -170,6 +194,9 @@ Photo capture for before/processing/after galleries. `formula_photos` table and 
 - **Edge function directories starting with `_` are treated as shared code, not functions**, and will not deploy or route.
 - **Hosted Supabase sends ~3 emails/hour.** Real signups need Resend, which needs a domain. Not yet registered.
 - **The `send-push` edge function needs a schedule** (every minute) in the Supabase dashboard, or notifications queue silently. **`payment-worker` needs the same**, or deposits are authorised and never captured or released.
+- **Stripe Connect needs TWO webhook destinations.** Direct charges live on the connected account and are only delivered to a "Connected accounts" destination; platform charges go to a "Your account" one. Each gets its own signing secret, so `STRIPE_WEBHOOK_SECRET` is a comma-separated list and the verifier tries each. A single-secret verifier silently rejects every event from the other destination — an endpoint that looks healthy and reconciles half the money.
+- **v2 account events use "thin payloads"** — an ID, not the object. The handler must never default a missing field: an earlier version turned a missing `charges_enabled` into `false`, which would have DISABLED a working stylist. Every field is now conditional on being present, and the v2 account events are deliberately NOT subscribed until the fetch-on-thin-payload path is built.
+- **`pg_net` is required to schedule an edge function from cron**, and it was not installed. That is the real reason `send-push` had no schedule. Cron timeout maxes at 5000ms — that is only how long pg_net waits for a response, not a limit on the function.
 - **Supabase gateways enforce a JWT on edge functions by default, and Stripe has no JWT to send.** Every webhook delivery came back 401 before the function was reached — an endpoint that looks healthy in the dashboard while reconciling nothing. Fixed with `[functions.stripe-webhook] verify_jwt = false` in `config.toml` rather than a deploy flag, so it cannot be forgotten. Authentication there is the signature check, which is stronger than a bearer token anyway.
 - **Test the app against LOCAL Supabase, not production**, and the one-salon slot is never at risk:
   ```bash

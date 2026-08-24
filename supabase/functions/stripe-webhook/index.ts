@@ -17,8 +17,17 @@ import { verifyStripeSignature } from '../_shared/stripe.ts';
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
 
-  const secret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
-  if (!secret) {
+  // Comma-separated, because this one endpoint serves two Stripe destinations
+  // and each has its own signing secret: platform-scope events (booth rent,
+  // rent card setup, Connect readiness) and connected-account events (the
+  // direct charges that keep a 1099 renter merchant of record). Kept as one
+  // variable so it stays one command to set.
+  const secrets = (Deno.env.get('STRIPE_WEBHOOK_SECRET') ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (secrets.length === 0) {
     console.error('[stripe-webhook] STRIPE_WEBHOOK_SECRET is not set');
     return json({ error: 'webhook not configured' }, 500);
   }
@@ -26,7 +35,7 @@ Deno.serve(async (req) => {
   // Raw text, not req.json(). The signature covers the exact bytes Stripe sent,
   // so parsing first and re-serialising would break verification.
   const raw = await req.text();
-  const verified = await verifyStripeSignature(raw, req.headers.get('Stripe-Signature'), secret);
+  const verified = await verifyStripeSignature(raw, req.headers.get('Stripe-Signature'), secrets);
   if (!verified.ok) {
     // 400, not 500: a bad signature is not a transient failure and Stripe
     // should not retry it.
@@ -228,18 +237,33 @@ async function handle(supabase: ReturnType<typeof serviceClient>, event: Record<
 
     // Connect onboarding progressed. Mirrored so the app can gate booking on
     // readiness without an API round trip on every screen.
-    case 'account.updated':
-    case 'v2.core.account.updated': {
-      const capabilities = object.capabilities ?? {};
+    //
+    // Every field is conditional on actually being present. The previous
+    // version defaulted a missing `charges_enabled` to false, which on any
+    // payload that does not carry the field — a v2 thin payload, say — would
+    // have DISABLED a working stylist rather than left them alone. A webhook
+    // that can turn off a working account by accident is worse than one that
+    // does nothing.
+    case 'account.updated': {
+      const patch: Record<string, unknown> = {};
+      if (typeof object.details_submitted === 'boolean') {
+        patch.details_submitted = object.details_submitted;
+      }
+      if (typeof object.charges_enabled === 'boolean') {
+        patch.charges_enabled = object.charges_enabled;
+        if (object.charges_enabled) patch.onboarded_at = new Date().toISOString();
+      }
+      if (typeof object.payouts_enabled === 'boolean') {
+        patch.payouts_enabled = object.payouts_enabled;
+      }
+      if (Array.isArray(object.requirements?.currently_due)) {
+        patch.requirements_due = object.requirements.currently_due;
+      }
+      if (Object.keys(patch).length === 0) break;
+
       const { error } = await supabase
         .from('stripe_accounts')
-        .update({
-          details_submitted: object.details_submitted ?? false,
-          charges_enabled: object.charges_enabled ?? capabilities.card_payments === 'active',
-          payouts_enabled: object.payouts_enabled ?? false,
-          requirements_due: object.requirements?.currently_due ?? [],
-          onboarded_at: object.charges_enabled ? new Date().toISOString() : null,
-        })
+        .update(patch)
         .eq('stripe_account_id', object.id);
       if (error) throw new Error(error.message);
       break;
