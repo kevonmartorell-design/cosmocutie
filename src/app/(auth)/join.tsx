@@ -20,16 +20,15 @@ import { useTheme } from '@/theme/theme-provider';
 export default function Join() {
   const { theme } = useTheme();
   const router = useRouter();
-  const [salonSignupAllowed, setSalonSignupAllowed] = useState(false);
+  const [salonSignupAvailable, setSalonSignupAvailable] = useState(false);
 
   useEffect(() => {
-    // Readable without a session: the screen has to know which doors to draw
-    // before anyone has signed in.
+    // Callable without a session: the screen must know whether to draw the
+    // salon door before anyone has signed in. Returns only a boolean, so
+    // nothing about the salon itself leaks to a stranger.
     supabase
-      .from('platform_settings')
-      .select('allow_salon_signup')
-      .maybeSingle()
-      .then(({ data }) => setSalonSignupAllowed(data?.allow_salon_signup ?? false));
+      .rpc('salon_signup_available')
+      .then(({ data }) => setSalonSignupAvailable(data === true));
   }, []);
 
   return (
@@ -55,10 +54,11 @@ export default function Join() {
             onPress={() => router.push({ pathname: '/sign-up', params: { role: 'stylist' } })}
           />
 
-          {/* Hidden unless the platform owner has switched it on. For a single
-              salon this is not a feature — it is a way for strangers to appear
-              inside the owner's app. */}
-          {salonSignupAllowed ? (
+          {/* Shown only until a salon exists. This app holds one salon, so the
+              door closes itself the moment the owner walks through it — no
+              setting to remember, and no way for a stranger to set up shop
+              inside someone else's app. */}
+          {salonSignupAvailable ? (
             <Door
               title="I run this salon"
               blurb="Set up your salon, invite your stylists, and manage the floor."

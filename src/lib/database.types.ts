@@ -1120,24 +1120,6 @@ export type Database = {
           },
         ]
       }
-      platform_settings: {
-        Row: {
-          allow_salon_signup: boolean
-          id: boolean
-          updated_at: string
-        }
-        Insert: {
-          allow_salon_signup?: boolean
-          id?: boolean
-          updated_at?: string
-        }
-        Update: {
-          allow_salon_signup?: boolean
-          id?: boolean
-          updated_at?: string
-        }
-        Relationships: []
-      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -1720,14 +1702,6 @@ export type Database = {
           slot_start: string
         }[]
       }
-      bootstrap_salon: {
-        Args: {
-          p_owner_email: string
-          p_salon_name: string
-          p_timezone?: string
-        }
-        Returns: string
-      }
       cancel_appointment: {
         Args: { p_appointment_id: string; p_reason?: string }
         Returns: Database["public"]["Enums"]["cancellation_outcome"]
@@ -1849,6 +1823,7 @@ export type Database = {
         Args: { p_tenant_id: string }
         Returns: Database["public"]["Enums"]["charge_route"]
       }
+      salon_signup_available: { Args: never; Returns: boolean }
       settle_deposit: {
         Args: {
           p_captured_cents?: number
