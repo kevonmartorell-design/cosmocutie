@@ -1120,6 +1120,24 @@ export type Database = {
           },
         ]
       }
+      platform_settings: {
+        Row: {
+          allow_salon_signup: boolean
+          id: boolean
+          updated_at: string
+        }
+        Insert: {
+          allow_salon_signup?: boolean
+          id?: boolean
+          updated_at?: string
+        }
+        Update: {
+          allow_salon_signup?: boolean
+          id?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -1292,6 +1310,7 @@ export type Database = {
           claimed_at: string | null
           claimed_by: string | null
           classification: Database["public"]["Enums"]["worker_classification"]
+          code: string
           created_at: string
           display_name: string
           email: string
@@ -1306,6 +1325,7 @@ export type Database = {
           claimed_at?: string | null
           claimed_by?: string | null
           classification: Database["public"]["Enums"]["worker_classification"]
+          code?: string
           created_at?: string
           display_name: string
           email: string
@@ -1320,6 +1340,7 @@ export type Database = {
           claimed_at?: string | null
           claimed_by?: string | null
           classification?: Database["public"]["Enums"]["worker_classification"]
+          code?: string
           created_at?: string
           display_name?: string
           email?: string
@@ -1521,27 +1542,48 @@ export type Database = {
       }
       tenants: {
         Row: {
+          address_line1: string | null
+          address_line2: string | null
+          city: string | null
+          country: string
           created_at: string
           id: string
           kind: Database["public"]["Enums"]["tenant_kind"]
           name: string
           parent_salon_id: string | null
+          phone: string | null
+          postal_code: string | null
+          region: string | null
           timezone: string
         }
         Insert: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          country?: string
           created_at?: string
           id?: string
           kind: Database["public"]["Enums"]["tenant_kind"]
           name: string
           parent_salon_id?: string | null
+          phone?: string | null
+          postal_code?: string | null
+          region?: string | null
           timezone?: string
         }
         Update: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          country?: string
           created_at?: string
           id?: string
           kind?: Database["public"]["Enums"]["tenant_kind"]
           name?: string
           parent_salon_id?: string | null
+          phone?: string | null
+          postal_code?: string | null
+          region?: string | null
           timezone?: string
         }
         Relationships: [
@@ -1678,12 +1720,20 @@ export type Database = {
           slot_start: string
         }[]
       }
+      bootstrap_salon: {
+        Args: {
+          p_owner_email: string
+          p_salon_name: string
+          p_timezone?: string
+        }
+        Returns: string
+      }
       cancel_appointment: {
         Args: { p_appointment_id: string; p_reason?: string }
         Returns: Database["public"]["Enums"]["cancellation_outcome"]
       }
       claim_client_invite: { Args: { p_token: string }; Returns: string }
-      claim_stylist_invitation: { Args: never; Returns: string }
+      claim_stylist_invitation: { Args: { p_code?: string }; Returns: string }
       create_booking_request: {
         Args: {
           p_child_age?: number
@@ -1716,6 +1766,7 @@ export type Database = {
           slot_start: string
         }[]
       }
+      generate_invite_code: { Args: never; Returns: string }
       impersonate: { Args: { em: string; uid: string }; Returns: undefined }
       invite_stylist: {
         Args: {
@@ -1725,7 +1776,10 @@ export type Database = {
           p_email: string
           p_rent_interval?: string
         }
-        Returns: string
+        Returns: {
+          invitation_id: string
+          invite_code: string
+        }[]
       }
       mark_no_show: { Args: { p_appointment_id: string }; Returns: undefined }
       materialise_appointment: {

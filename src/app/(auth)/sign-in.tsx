@@ -87,7 +87,7 @@ export default function SignIn() {
               <Text style={[typography.caption, { color: theme.textMuted }]}>
                 New here?
               </Text>
-              <Link href="/sign-up" style={[typography.label, { color: theme.primary }]}>
+              <Link href="/join" style={[typography.label, { color: theme.primary }]}>
                 Create an account
               </Link>
             </View>

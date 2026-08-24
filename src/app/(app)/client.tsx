@@ -98,21 +98,6 @@ export default function ClientHome() {
             </View>
           </GlassCard>
 
-          <GlassCard rounded="xl">
-            <View style={styles.card}>
-              <Text style={[typography.heading, { color: theme.text }]}>Run a salon?</Text>
-              <Text style={[typography.body, { color: theme.textMuted }]}>
-                Set up your salon and your own chair. You will be able to invite
-                stylists, who each keep their own client book.
-              </Text>
-              <CCButton
-                label="Set up my salon"
-                variant="secondary"
-                onPress={() => router.push('/(app)/setup-salon')}
-              />
-            </View>
-          </GlassCard>
-
           <CCButton
             label="My CosmoCutie"
             variant="secondary"

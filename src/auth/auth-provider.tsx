@@ -63,6 +63,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
       return;
     }
 
+    // Guards derive "is this person staff?" from `memberships`, so while a
+    // refresh is in flight that list is stale. Marking it unloaded makes
+    // `ready` false, so guards show a loading state instead of concluding the
+    // user has no memberships and redirecting them away.
+    setMembershipsLoaded(false);
+
     // RLS restricts this to the caller's own rows, so no filter is needed
     // beyond what the policy already enforces.
     const { data, error } = await supabase
@@ -149,10 +155,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setMemberships([]);
   }, []);
 
-  const refreshMemberships = useCallback(
-    () => loadMemberships(session?.user.id),
-    [loadMemberships, session?.user.id],
-  );
+  const refreshMemberships = useCallback(async () => {
+    // Ask Supabase for the current user rather than reading `session` from the
+    // closure. Straight after sign-up the auth change has not yet reached
+    // provider state, so the closure still holds null — which loaded
+    // memberships for `undefined`, produced an empty list, and sent a
+    // freshly-claimed stylist to the client screen.
+    const { data } = await supabase.auth.getUser();
+    await loadMemberships(data.user?.id);
+  }, [loadMemberships]);
 
   const value = useMemo<AuthContextValue>(() => {
     const adminTenant = memberships.find((m) => m.role === 'admin') ?? null;
