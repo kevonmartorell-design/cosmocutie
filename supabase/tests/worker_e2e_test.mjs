@@ -11,8 +11,13 @@
 import { execFileSync } from 'node:child_process';
 
 const URL = 'http://127.0.0.1:54321/functions/v1/payment-worker';
-const SERVICE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
+
+// Read from the running stack rather than hard-coded. The local one is the same
+// well-known development value on every machine, but no key belongs in the repo
+// — including the ones that are not secret, because the habit is what matters.
+const SERVICE_KEY = JSON.parse(
+  execFileSync('npx', ['supabase', 'status', '-o', 'json']).toString(),
+).SERVICE_ROLE_KEY;
 
 const sql = (q) =>
   execFileSync('docker', ['exec','-i','supabase_db_CosmoCutie','psql','-U','postgres','-d','postgres','-tAc',q])
