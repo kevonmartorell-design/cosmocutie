@@ -52,8 +52,12 @@ select 'deposit is 20% of $300' as probe, deposit_amount_cents as cents,
        case when deposit_amount_cents = 6000 then 'PASS ($60)' else 'FAIL' end as verdict
 from public.booking_requests where id=:'req';
 
--- Stripe would create the intent; we record it.
+-- Stripe would create the intent; we record it. Recorded AS the client, because
+-- the deposit is a hold on her card and record_deposit_intent now insists the
+-- caller is the client whose card it is.
+select public.impersonate('33333333-3333-3333-3333-333333333333','n@c.test');
 select public.record_deposit_intent(:'req','pi_test_123', 6000) as pay \gset
+select set_config('role','postgres',false), set_config('request.jwt.claims',null,false);
 select 'hold recorded as authorized' as probe, status::text,
        case when status='authorized' then 'PASS' else 'FAIL' end as verdict
 from public.payments where id=:'pay';
@@ -66,9 +70,16 @@ select public.impersonate('22222222-2222-2222-2222-222222222222','r@s.test');
 select public.respond_to_request(:'req','decline', null, 'Fully booked');
 select set_config('role','postgres',false), set_config('request.jwt.claims',null,false);
 
+-- The release job lands in payment_jobs, NOT notification_queue. The push queue
+-- marks a row delivered even when the recipient has no device registered, so a
+-- capture or release parked there could be silently discarded.
 select 'release queued on decline' as probe, count(*) as n,
        case when count(*) = 1 then 'PASS (hold will not linger)' else 'FAIL' end as verdict
-from public.notification_queue where data->>'type' = 'release_deposit';
+from public.payment_jobs where kind = 'release' and stripe_payment_intent_id = 'pi_test_123';
+
+select 'release is NOT a push notification' as probe, count(*) as n,
+       case when count(*) = 0 then 'PASS (off the push queue)' else 'FAIL - money rides on best-effort delivery' end as verdict
+from public.notification_queue where data->>'type' in ('release_deposit','capture_deposit');
 
 -- Separate statements: one statement sees a single snapshot, so checking the
 -- row in the same statement that changes it reads the old value.
