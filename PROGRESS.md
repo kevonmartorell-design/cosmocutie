@@ -125,9 +125,9 @@ encoded in its own publishable key:
 grep -o 'pk_test_[A-Za-z0-9]*' eas.json | head -1 | cut -c10-25   # -> 1U7mD6I7PIoulqv7
 ```
 
-A first pass created both destinations in the wrong sandbox. They are inert
-there (nothing in that account ever fires) but should be deleted:
-`we_1U7xKAIt3hk81Wm1T1R707Ql` and `we_1U7xLhIt3hk81Wm1hJ401BZi`.
+A first pass created both destinations in the wrong sandbox
+(`acct_1U7mCwIt3hk81Wm1`); those have been deleted and that account's webhook
+list is empty again.
 
 ⚠️ **Two destinations, not one, and this is not optional.** Deposits and the
 closing balance are DIRECT charges on the stylist's own connected account —
