@@ -47,7 +47,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web --port 8083",
     "lint": "expo lint",
-    "db:start": "supabase start -x vector,logflare,studio,storage-api,imgproxy,edge-runtime,realtime,supavisor,mailpit",
+    "db:start": "supabase start -x vector,logflare,studio,imgproxy,edge-runtime,realtime,supavisor,mailpit",
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
     "db:test": "supabase db reset && docker exec -i supabase_db_CosmoCutie psql -U postgres -d postgres -q -v ON_ERROR_STOP=1 < supabase/tests/rls_seed.sql && docker exec -i supabase_db_CosmoCutie psql -U postgres -d postgres < supabase/tests/rls_test.sql",
@@ -63,7 +63,8 @@
     "test:sig": "node --experimental-strip-types supabase/tests/webhook_signature_test.ts",
     "functions:serve": "supabase functions serve --env-file supabase/functions/.env",
     "functions:serve:recorded": "supabase functions serve --env-file supabase/functions/.env.recorded",
-    "test:shapes": "node supabase/tests/request_shape_test.mjs"
+    "test:shapes": "node supabase/tests/request_shape_test.mjs",
+    "test:storage": "node supabase/tests/storage_e2e_test.mjs"
   },
   "private": true
 }

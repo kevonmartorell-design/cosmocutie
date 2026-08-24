@@ -785,39 +785,54 @@ export type Database = {
       formula_photos: {
         Row: {
           appointment_id: string
+          bytes: number | null
+          captured_at: string | null
           consent_granted_at: string | null
           consent_revoked_at: string | null
           consented_to_publish: boolean
           created_at: string
           formula_id: string | null
+          height: number | null
           id: string
           stage: Database["public"]["Enums"]["photo_stage"]
           storage_path: string
           tenant_id: string
+          thumbnail_path: string | null
+          width: number | null
         }
         Insert: {
           appointment_id: string
+          bytes?: number | null
+          captured_at?: string | null
           consent_granted_at?: string | null
           consent_revoked_at?: string | null
           consented_to_publish?: boolean
           created_at?: string
           formula_id?: string | null
+          height?: number | null
           id?: string
           stage?: Database["public"]["Enums"]["photo_stage"]
           storage_path: string
           tenant_id: string
+          thumbnail_path?: string | null
+          width?: number | null
         }
         Update: {
           appointment_id?: string
+          bytes?: number | null
+          captured_at?: string | null
           consent_granted_at?: string | null
           consent_revoked_at?: string | null
           consented_to_publish?: boolean
           created_at?: string
           formula_id?: string | null
+          height?: number | null
           id?: string
           stage?: Database["public"]["Enums"]["photo_stage"]
           storage_path?: string
           tenant_id?: string
+          thumbnail_path?: string | null
+          width?: number | null
         }
         Relationships: [
           {
@@ -2000,6 +2015,19 @@ export type Database = {
         Args: { p_charge_id: string; p_dispute_id: string }
         Returns: undefined
       }
+      record_formula_photo: {
+        Args: {
+          p_appointment_id: string
+          p_bytes?: number
+          p_formula_id?: string
+          p_height?: number
+          p_stage: Database["public"]["Enums"]["photo_stage"]
+          p_storage_path: string
+          p_thumbnail_path?: string
+          p_width?: number
+        }
+        Returns: string
+      }
       record_refund: {
         Args: { p_payment_intent_id: string; p_refunded_cents: number }
         Returns: undefined
@@ -2037,6 +2065,10 @@ export type Database = {
         Returns: Database["public"]["Enums"]["charge_route"]
       }
       salon_signup_available: { Args: never; Returns: boolean }
+      set_photo_publish_consent: {
+        Args: { p_consented: boolean; p_photo_id: string }
+        Returns: undefined
+      }
       settle_deposit: {
         Args: {
           p_captured_cents?: number
