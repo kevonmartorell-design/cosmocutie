@@ -41,11 +41,11 @@
     "typescript": "~6.0.3"
   },
   "scripts": {
-    "start": "expo start",
+    "start": "expo start --port 8083",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web",
+    "web": "expo start --web --port 8083",
     "lint": "expo lint",
     "db:start": "supabase start -x vector,logflare,studio,storage-api,imgproxy,edge-runtime,realtime,supavisor,mailpit",
     "db:stop": "supabase stop",

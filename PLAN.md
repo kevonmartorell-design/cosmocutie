@@ -37,7 +37,11 @@ Running spec, built up over conversations with Claude.
 - **Payments:** Stripe Connect, Express accounts; Direct Charges for 1099 booth renters, Destination Charges for W-2 commission stylists
 - **Design:** "Cyber Magical Girl" palette + glassmorphism (light/dark toggle). Glass is a **client requirement**, not a style preference.
 - **MVP scope:** booking + negotiation, multi-tenant stylist profiles/pricing, Stripe Connect payments, patch-test consent, offline sync. Smart-scale IoT, SMS win-back, wallet passes, and physical card readers are post-launch.
-- **Deployment scope:** **single salon** for launch — one branded app, no marketplace/discovery layer. Schema stays tenant-scoped anyway, because booth renters are already separate tenants inside one salon, and multi-salon may come later.
+- **Deployment scope:** **one salon, one app.** Shipping to the App Store for a single salon. Expansion to multiple salons is a distant maybe, not a near plan — build for one location and keep the tenant-scoped schema, which already supports more if it ever happens.
+- **Salon signup is off by default**, controlled by a database setting rather than code, so a delivered app never lets a stranger create a salon inside it — and it can be turned on later without a rebuild.
+- **Role is chosen before the account is created**, not discovered afterwards.
+- **Salon address is editable** — a salon moves, and a hardcoded address becomes wrong.
+- ~~**Deployment scope:** **single salon** for launch~~ — one branded app, no marketplace/discovery layer. Schema stays tenant-scoped anyway, because booth renters are already separate tenants inside one salon, and multi-salon may come later.
 - **Client data ownership:** shared identity record, tenant-scoped relationship records — see Reference. Driven by 1099 compliance.
 - **Roles are composable:** the salon owner is also a working stylist, holding admin *and* stylist roles on one account, with their own chair scoped as its own tenant.
 - **Engagement layer (Phase 8):** deals/featured placement first, then the CosmoCutie Feed — vertical-swipe, stylists/admin post only, service-tagged posts link straight into booking, per-photo client consent required. Mixed photo + video, though see the cost note before committing to video at launch.
@@ -308,6 +312,34 @@ The Vercel web preview is unaffected — it runs LokiJS over IndexedDB, pure Jav
 - **Explicit context switch in the UI** — "my chair" (stylist view) vs "my salon" (admin view). Keep them separate surfaces rather than one merged super-dashboard; merging is how renter data accidentally leaks into an owner screen.
 - Worker classification per stylist: **1099 renter / W-2 commission / owner-operator** — drives payment routing in Phase 4
 - Client signup + profile
+
+## Signing Up — role first
+
+**The role is chosen before the account exists, not after.** The earlier flow created an account and then asked what to do with it, which puts the explanation in the wrong order: a person knows who they are before they know what a "tenant" is.
+
+**Three doors on the opening screen:**
+
+| Choice | What happens |
+|---|---|
+| **I'm booking appointments** | Ordinary client signup. The common case, listed first. |
+| **I work at this salon** | Asks for an **invite code**, then signs them up straight into their chair. |
+| **I run this salon** | Salon setup — **hidden unless `allow_salon_signup` is on** |
+
+### Salon signup is off by default
+
+A single row of `platform_settings` controls it, defaulting to **false**. This app ships to one salon, and in that context "create your own salon" is not a feature but a way for strangers to appear inside the owner's app.
+
+Kept as a database setting rather than a build flag deliberately: it can be turned on later without a rebuild, and turned off again just as fast if it was a mistake. The salon itself is created once at handover.
+
+### Stylist invite codes
+
+The stylist door has to deliver what it promises, and stylists are invite-only. So an invitation now carries a **short code** alongside the email match:
+
+- The owner invites, and gets a code to pass on however they like
+- The stylist enters it at signup and lands directly in their chair
+- Email matching stays as a fallback, so an invitation still auto-claims if they happen to sign up with the invited address
+
+The code matters because it survives the common case the email match does not: someone invited at one address signing up with another.
 
 ## Invitations — link-first, for both directions
 
