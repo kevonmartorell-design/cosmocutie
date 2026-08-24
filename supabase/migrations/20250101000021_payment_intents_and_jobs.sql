@@ -35,12 +35,51 @@ alter table public.payments drop column if exists platform_fee_cents;
 -- -----------------------------------------------------------------------------
 -- Close the two holes
 -- -----------------------------------------------------------------------------
+-- Which connected account a charge lands in, by classification.
+--   direct      1099 renter — their own account, they are merchant of record
+--   destination W-2 — charged on the platform, settled to their account
+--   salon       owner-operator — the salon's own account, because it is the
+--               same business entity and they do not pay themselves rent
+create or replace function public.payout_account_for(p_tenant_id uuid)
+returns text
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_route   public.charge_route := public.route_for_tenant(p_tenant_id);
+  v_account text;
+begin
+  if v_route = 'salon' then
+    select sa.stripe_account_id into v_account
+    from public.tenants t
+    join public.stripe_accounts sa on sa.tenant_id = t.parent_salon_id
+    where t.id = p_tenant_id;
+  end if;
+
+  -- Direct and destination both settle to the chair's own account, and the
+  -- salon route falls back to it if the salon has not onboarded yet.
+  if v_account is null then
+    select sa.stripe_account_id into v_account
+    from public.stripe_accounts sa where sa.tenant_id = p_tenant_id;
+  end if;
+
+  return v_account;
+end;
+$$;
+
 -- record_deposit_intent: SECURITY DEFINER bypasses RLS, so without an explicit
 -- check any authenticated user could attach a payment row to a stranger's
 -- booking request in another tenant. Worse, `payments_intent_idx` is unique on
 -- the intent id, so squatting an id would also block the real deposit from ever
 -- being recorded.
-create or replace function public.record_deposit_intent(
+--
+-- Split in two. Everything substantive lives in the internal function, so the
+-- webhook (which has no auth.uid() and cannot pass a caller check) and the app
+-- validate identically. The wrapper adds only the question the webhook cannot
+-- ask: is this your card?
+create or replace function public.record_deposit_intent_internal(
   p_request_id uuid,
   p_payment_intent_id text,
   p_amount_cents integer
@@ -57,12 +96,6 @@ begin
   select * into r from public.booking_requests where id = p_request_id;
   if r is null then raise exception 'no such request'; end if;
 
-  -- The deposit is a hold on the CLIENT'S card, so only the client whose card
-  -- it is may put one on record.
-  if r.client_id not in (select public.current_client_ids()) then
-    raise exception 'not your booking request';
-  end if;
-
   -- A closed negotiation must not grow a new hold: the release path has
   -- already run by then, and this row would never be settled.
   if r.status not in ('awaiting_stylist','awaiting_client') then
@@ -78,12 +111,18 @@ begin
     raise exception 'deposit amount does not match the amount disclosed at booking';
   end if;
 
+  -- A replayed webhook must not create a second payment row.
+  select id into v_payment_id from public.payments
+  where stripe_payment_intent_id = p_payment_intent_id;
+  if v_payment_id is not null then return v_payment_id; end if;
+
   insert into public.payments
     (tenant_id, booking_request_id, client_id, kind, status,
-     amount_cents, route, stripe_payment_intent_id, authorized_at)
+     amount_cents, route, stripe_account_id, stripe_payment_intent_id, authorized_at)
   values
     (r.tenant_id, p_request_id, r.client_id, 'deposit', 'authorized',
-     p_amount_cents, public.route_for_tenant(r.tenant_id), p_payment_intent_id, now())
+     p_amount_cents, public.route_for_tenant(r.tenant_id),
+     public.payout_account_for(r.tenant_id), p_payment_intent_id, now())
   returning payments.id into v_payment_id;
 
   update public.booking_requests
@@ -91,6 +130,32 @@ begin
   where booking_requests.id = p_request_id;
 
   return v_payment_id;
+end;
+$$;
+
+create or replace function public.record_deposit_intent(
+  p_request_id uuid,
+  p_payment_intent_id text,
+  p_amount_cents integer
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare r record;
+begin
+  select * into r from public.booking_requests where id = p_request_id;
+  if r is null then raise exception 'no such request'; end if;
+
+  -- The deposit is a hold on the CLIENT'S card, so only the client whose card
+  -- it is may put one on record.
+  if r.client_id not in (select public.current_client_ids()) then
+    raise exception 'not your booking request';
+  end if;
+
+  return public.record_deposit_intent_internal(
+    p_request_id, p_payment_intent_id, p_amount_cents);
 end;
 $$;
 
@@ -103,6 +168,12 @@ revoke all on function public.settle_deposit(text, public.payment_status, intege
 comment on function public.settle_deposit is
   'Webhook-only. Deliberately NOT granted to authenticated: this function
    decides that money moved, and only Stripe gets to tell us that.';
+
+-- A client who backs out of the hosted payment page and comes back should land
+-- on the same session rather than opening a second hold against the same
+-- booking.
+alter table public.booking_requests
+  add column if not exists stripe_checkout_session_id text;
 
 -- -----------------------------------------------------------------------------
 -- The money job queue
@@ -202,32 +273,52 @@ $$;
 -- -----------------------------------------------------------------------------
 -- `for update skip locked` is what makes it safe to run two workers, or to have
 -- a scheduled run overlap a slow one: each row is handed to exactly one caller.
+-- Returns routing context alongside each job. A direct charge lives ON the
+-- connected account, so capturing it needs the Stripe-Account header; a
+-- destination charge lives on the platform and must not carry one. Getting that
+-- wrong is a 404 from Stripe, not a wrong amount, but it is still the worker's
+-- job to know which it is holding.
 create or replace function public.claim_payment_jobs(p_limit integer default 20)
-returns setof public.payment_jobs
-language plpgsql
+returns table (
+  job_id            uuid,
+  kind              public.payment_job_kind,
+  payment_id        uuid,
+  tenant_id         uuid,
+  payment_intent_id text,
+  amount_cents      integer,
+  attempts          smallint,
+  route             public.charge_route,
+  stripe_account_id text
+)
+language sql
 security definer
 set search_path = ''
 as $$
-begin
-  return query
-  update public.payment_jobs j
-  set status   = 'processing',
-      attempts = j.attempts + 1
-  where j.id in (
-    select c.id
-    from public.payment_jobs c
-    where c.status = 'pending'
-      and c.run_after <= now()
-      -- Six attempts then it stops and waits for a human. A job that has
-      -- failed six times is not going to succeed on the seventh, and a hot
-      -- retry loop against a payments API is its own kind of damage.
-      and c.attempts < 6
-    order by c.created_at
-    limit p_limit
-    for update skip locked
+  with claimed as (
+    update public.payment_jobs j
+    set status   = 'processing',
+        attempts = j.attempts + 1
+    where j.id in (
+      select c.id
+      from public.payment_jobs c
+      where c.status = 'pending'
+        and c.run_after <= now()
+        -- Six attempts then it stops and waits for a human. A job that has
+        -- failed six times is not going to succeed on the seventh, and a hot
+        -- retry loop against a payments API is its own kind of damage.
+        and c.attempts < 6
+      order by c.created_at
+      limit p_limit
+      for update skip locked
+    )
+    returning j.*
   )
-  returning j.*;
-end;
+  select c.id, c.kind, c.payment_id, c.tenant_id,
+         c.stripe_payment_intent_id, c.amount_cents, c.attempts,
+         coalesce(p.route, public.route_for_tenant(c.tenant_id)),
+         coalesce(p.stripe_account_id, public.payout_account_for(c.tenant_id))
+  from claimed c
+  left join public.payments p on p.id = c.payment_id;
 $$;
 
 create or replace function public.finish_payment_job(
@@ -574,6 +665,13 @@ $$;
 -- the caller itself.
 revoke all on function public.record_deposit_intent(uuid, text, integer) from public;
 grant execute on function public.record_deposit_intent(uuid, text, integer) to authenticated, service_role;
+
+-- The internal variant skips the "is this your card" check, so it must never be
+-- reachable with a user JWT.
+revoke all on function public.record_deposit_intent_internal(uuid, text, integer) from public;
+grant execute on function public.record_deposit_intent_internal(uuid, text, integer) to service_role;
+revoke all on function public.payout_account_for(uuid) from public;
+grant execute on function public.payout_account_for(uuid) to service_role;
 
 -- Everything below is worker- or webhook-only: unreachable from a user JWT.
 revoke all on function public.enqueue_payment_job(public.payment_job_kind, uuid, uuid, text, integer) from public;

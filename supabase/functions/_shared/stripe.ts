@@ -80,3 +80,76 @@ export async function stripeV1<T>(
     }),
   );
 }
+
+/**
+ * Verifies a Stripe webhook signature.
+ *
+ * Hand-rolled because the official SDK's verifier expects Node crypto. The
+ * scheme is documented and small: sign `${timestamp}.${rawBody}` with the
+ * endpoint secret and compare against the `v1=` entries in the header.
+ *
+ * Three things here are load-bearing, and each is a way people get this wrong:
+ *
+ *   - The RAW body must be hashed, byte for byte. Parsing the JSON and
+ *     re-serialising it changes key order and whitespace, and the signature
+ *     stops matching for reasons that look like a Stripe bug.
+ *   - The comparison is timing-safe. A byte-by-byte early return leaks how much
+ *     of a forged signature was correct, which is enough to forge one.
+ *   - The timestamp is checked. Without it a valid old event can be replayed
+ *     forever by anyone who captured it once.
+ */
+export async function verifyStripeSignature(
+  rawBody: string,
+  signatureHeader: string | null,
+  secret: string,
+  toleranceSeconds = 300,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!signatureHeader) return { ok: false, error: 'missing Stripe-Signature header' };
+
+  const parts = new Map<string, string[]>();
+  for (const piece of signatureHeader.split(',')) {
+    const [k, v] = piece.split('=', 2);
+    if (!k || !v) continue;
+    parts.set(k.trim(), [...(parts.get(k.trim()) ?? []), v.trim()]);
+  }
+
+  const timestamp = parts.get('t')?.[0];
+  const signatures = parts.get('v1') ?? [];
+  if (!timestamp || signatures.length === 0) {
+    return { ok: false, error: 'malformed Stripe-Signature header' };
+  }
+
+  const age = Math.abs(Math.floor(Date.now() / 1000) - Number(timestamp));
+  if (!Number.isFinite(age) || age > toleranceSeconds) {
+    return { ok: false, error: 'timestamp outside tolerance' };
+  }
+
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const mac = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    new TextEncoder().encode(`${timestamp}.${rawBody}`),
+  );
+  const expected = [...new Uint8Array(mac)]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+
+  // Stripe sends more than one v1 when an endpoint secret is being rotated, so
+  // any match counts. Every candidate is compared in full.
+  const match = signatures.some((candidate) => timingSafeEqual(candidate, expected));
+  return match ? { ok: true } : { ok: false, error: 'signature mismatch' };
+}
+
+/** Constant time for equal-length inputs; length alone is not a secret here. */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
