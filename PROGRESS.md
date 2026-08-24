@@ -4,6 +4,20 @@ Status file for whoever picks this up next.
 
 **[PLAN.md](./PLAN.md) is the spec.** Read it before changing behaviour — it records *why* decisions were made, and several look arbitrary until you know the reason (the data firewall, the negotiation caps, the no-free-messaging rule, flat-only booth rent).
 
+> ### ⚠️ One thing is built but not deployed
+>
+> The renter data export is finished and tested, and is the only work sitting
+> undeployed. Three commands, in this order — the migration creates the bucket
+> and RPC the function needs:
+>
+> ```bash
+> npx supabase db push
+> npx supabase functions deploy export-data
+> npm run push:preview "Phase 5 - renter data export"
+> ```
+>
+> Everything else in Phases 0–5 is live. No `eas build` is outstanding.
+
 ---
 
 ## Where things stand
@@ -23,8 +37,14 @@ Status file for whoever picks this up next.
 **Live:** https://cosmocutie.vercel.app · **Repo:** https://github.com/kevonmartorell-design/cosmocutie
 **Supabase:** `tihzzdmvjdplmcdscxbh` · **EAS:** `@vonalmighty/cosmocutie` · **Bundle:** `com.cosmocutie.app`
 
-**26 migrations — 25 on the hosted project, migration 26 (data export) is local only and still needs `npx supabase db push`.** ~230 assertions across 17 SQL suites,
-plus 71 edge-function assertions and 19 on the exact request bodies sent to Stripe.
+**26 migrations — 25 on the hosted project, migration 26 (data export) is local
+only and still needs `npx supabase db push`.**
+
+Roughly 250 assertions in total: 17 SQL suites in `supabase/tests/`, plus seven
+harnesses that run against the real services — webhook signatures, the full
+Stripe-to-database path, the payment worker, the exact request bodies sent to
+Stripe, photo storage over HTTP, the data export, and the photo resize
+arithmetic.
 
 ---
 
@@ -35,7 +55,7 @@ this list is waiting on a deploy.
 
 | | Status |
 |---|---|
-| Migrations 1–24 | ✅ all applied to `tihzzdmvjdplmcdscxbh` |
+| Migrations 1–25 | ✅ applied to `tihzzdmvjdplmcdscxbh` |
 | `send-push`, `stripe-connect` | ✅ deployed |
 | `stripe-checkout`, `stripe-webhook`, `payment-worker`, `stripe-billing` | ✅ deployed |
 | Stripe webhook destinations (×2) | ✅ Active in `acct_1U7mD6I7PIoulqv7` |
@@ -81,11 +101,16 @@ npm run push:preview "Phase 5 - renter data export"
 
 ```bash
 npm install
-npm run db:start          # local Supabase (excludes services that fail healthchecks)
+npm run db:start          # local Supabase (storage-api included — photos need it)
 npm run db:test           # 22 adversarial RLS checks — must pass before you change anything
 ```
 
 Docker Desktop must be running. If `db:start` fails with a daemon error, `open -a Docker` and wait ~30s.
+
+`db:start` still excludes a handful of services that are genuinely unused here
+(vector, logflare, studio, imgproxy, realtime, supavisor, mailpit). **storage-api
+is NOT excluded any more** — it was, on the belief that it failed healthchecks,
+and that quietly made all photo work untestable. It starts fine.
 
 ---
 
@@ -102,14 +127,38 @@ npm run build:preview     # only when a NATIVE dependency changes
 ```
 
 ```bash
-npm run db:suite phase4c_test        # one or more SQL suites, each on a fresh database
-npm run functions:serve              # edge functions locally (needs supabase/functions/.env)
-npm run test:edge                    # 67 assertions against the running functions
+npm run db:suite phase4c_test   # one or more SQL suites, each on a fresh database
+npm run test:photos             # photo resize + base64 arithmetic (no services needed)
+```
 
-# What we actually send Stripe. Needs functions:serve:recorded in another
-# terminal, which points STRIPE_API_BASE at a local recorder.
-npm run functions:serve:recorded
-npm run test:shapes                  # 19 assertions on the request bodies
+These need `npm run functions:serve` running in another terminal. It reads
+`supabase/functions/.env`, which is **gitignored, so a fresh clone will not have
+it** and the command fails with no obvious cause. Recreate it — the Stripe
+values can be junk, because none of the local tests reach Stripe:
+
+```bash
+cat > supabase/functions/.env <<'EOF'
+STRIPE_WEBHOOK_SECRET=whsec_local_only_for_testing
+STRIPE_SECRET_KEY=sk_test_not_a_real_key
+PLATFORM_FEE_BPS=0
+APP_URL=http://localhost:8083
+EOF
+cp supabase/functions/.env supabase/functions/.env.recorded
+echo 'STRIPE_API_BASE=http://host.docker.internal:8799' >> supabase/functions/.env.recorded
+```
+
+```bash
+npm run test:edge               # signatures, the Stripe→database path, the worker
+npm run test:export             # renter data export, with hostile CSV data
+```
+
+`npm run test:storage` needs only the local stack, not the functions.
+
+What we actually SEND Stripe — needs `npm run functions:serve:recorded` in
+another terminal, which points `STRIPE_API_BASE` at a local recorder:
+
+```bash
+npm run test:shapes             # 19 assertions on the exact request bodies
 ```
 
 ⚠️ **Every SQL suite needs its own `db reset` first.** Each one seeds its own users and its
@@ -121,6 +170,20 @@ as every later `\gset` variable goes unset. `npm run db:suite` handles the reset
 ---
 
 ## What to do next
+
+### 0. Phase 6 — offline sync (the next unbuilt phase)
+
+WatermelonDB is wired up from Phase 1 — models, schema and adapters exist in
+`src/db/` — but nothing syncs. See PLAN.md → Phase 6. This is the largest
+remaining piece of app work and it ships over the air.
+
+Two things to know before starting:
+- **Expo Go cannot run this app** because WatermelonDB is native. Use the
+  preview build, which is standalone.
+- Sync has to respect the tenant firewall. A pull that fetches "everything the
+  user can see" and caches it locally is a way to end up with a renter's client
+  book on the owner's device. Whatever sync does, `npm run db:test` must still
+  pass and the reasoning in **The one rule not to break** still applies.
 
 ### 1. Phase 4 — deployed. One decision left, and one thing only a real booking can prove
 
@@ -266,7 +329,17 @@ Exports are swept after 7 days by the `purge-stale-exports` cron. A finished
 export is a renter's entire client book sitting in a bucket — useful for an
 hour, a liability for a year.
 
-### 3. Known cleanup
+### 3. Open decisions that need a human, not a commit
+
+- **The platform fee.** `PLATFORM_FEE_BPS` is 0 — the platform takes nothing.
+  PLAN.md mentions 10% as a line item but never fixed a booking rate.
+- **Whether the owner should see a renter's phone and email.** Today they see
+  the name and classification only. That was a deliberate choice, not an
+  oversight — see the cleanup note below.
+- **A domain**, so real transactional email works via Resend. Hosted Supabase
+  sends ~3/hour, which is fine for testing and not for users.
+
+### 4. Known cleanup
 - `src/app/(app)/setup-salon.tsx` is orphaned — salon creation moved into the sign-up flow. Nothing links to it.
 - **The owner cannot see a renter's phone or email.** `chair_occupants()` returns the name and classification only. Contact details were left out on purpose rather than by accident — see the gotcha below — so if the owner should be able to phone their renter, that is a deliberate decision to make, not a bug to fix.
 - `payments` has a `fee_cents` column that is now written on refunds but never set on capture, because the platform fee is zero. When `PLATFORM_FEE_BPS` becomes non-zero, set it from the webhook so reporting can show "gross / platform fee / net" as PLAN.md asks.
@@ -297,10 +370,17 @@ hour, a liability for a year.
 - **`psql -tAc` prints the command tag after `RETURNING` output.** `insert ... returning id` gives you the id *and* `INSERT 0 1`. Take the first line.
 - **Never seed `auth.users` by hand** — GoTrue fails with an opaque "Database error querying schema" at sign-in. Create users through `/auth/v1/signup`, then attach roles with SQL.
 
+**Storage**
+- **The tenant firewall does NOT reach Storage by itself.** A `formula_photos` row is isolated by RLS, but the FILE lives in a different subsystem with its own rules. Without policies on `storage.objects`, anyone holding a path could fetch another stylist's client photos while every database check still passed — and a path is not a secret, it is built from ids the other stylist may legitimately have seen. Paths are `{tenant}/{appointment}/{file}` and every policy keys on the first folder.
+- **A row and an object can disagree about who owns a file.** `record_formula_photo` re-checks the path prefix from the database side, because otherwise a stylist could file a row pointing at somebody else's object and read it back through their own gallery.
+- **Test storage policies over real HTTP.** They are enforced by the storage service, not Postgres, so psql cannot prove them. `npm run test:storage` uploads and downloads as two real stylists in different tenants.
+
 **React**
 - **`refreshMemberships` must read the live session**, not the closure. Right after sign-up the auth change has not reached provider state, so `session` is null. Use `supabase.auth.getUser()`. This routed a freshly-claimed stylist to the client screen and **no unit test would have caught it** — only walking the flow did.
 - **Browser automation cannot drive react-native-web.** `form_input` sets DOM values without updating React state; synthetic clicks often miss `Pressable`. Use the native value setter plus an `input` event, and ask the user to verify real taps.
 - **`Pressable` needs pointer events, not a click.** Dispatching `pointerdown, mousedown, pointerup, mouseup, click` in sequence works where a bare `click()` silently does nothing.
+- **`expo-image` lazy-loads.** An off-screen image reports `naturalWidth: 0` and `complete: false` forever, which reads exactly like a broken URL. Scroll it into view before concluding anything, or fetch the src directly.
+- **Image resize has two bugs that typecheck perfectly and only cost storage.** `resize({width})` caps the WIDTH, not the longest edge — wrong for portrait photos, which is most of them. And anything already smaller than the target gets scaled UP, inventing no detail and multiplying the bytes. Both are covered by `npm run test:photos`, which needs no services.
 
 **Ops**
 - **Testing Connect against production consumes the one-salon slot.** Verifying `stripe-connect` required creating a real salon, which blocked the owner from ever creating hers. It was cleaned up with a scoped throwaway edge function. If this bites again, add a test-mode-only bypass rather than hand-cleaning.
