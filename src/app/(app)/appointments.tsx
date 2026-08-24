@@ -180,12 +180,25 @@ export default function Appointments() {
                           onPress={() => setConfirming(a)}
                         />
                         {mine && started ? (
-                          <CCButton
-                            label="No-show"
-                            variant="ghost"
-                            disabled={busy}
-                            onPress={() => noShow(a)}
-                          />
+                          <>
+                            <CCButton
+                              label="Check out"
+                              variant="primary"
+                              disabled={busy}
+                              onPress={() =>
+                                router.push({
+                                  pathname: '/(app)/checkout/[id]',
+                                  params: { id: a.id },
+                                })
+                              }
+                            />
+                            <CCButton
+                              label="No-show"
+                              variant="ghost"
+                              disabled={busy}
+                              onPress={() => noShow(a)}
+                            />
+                          </>
                         ) : null}
                       </View>
                     )}

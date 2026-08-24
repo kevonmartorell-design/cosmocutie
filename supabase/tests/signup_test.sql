@@ -13,10 +13,24 @@ values ('11111111-1111-1111-1111-111111111111','00000000-0000-0000-0000-00000000
        ('99999999-9999-9999-9999-999999999999','00000000-0000-0000-0000-000000000000','authenticated','authenticated','stranger@x.test','x',now(),'{"full_name":"Random Stranger"}');
 
 \echo ''
-\echo '=== SALON SIGNUP IS OFF BY DEFAULT ==='
-select 'default is off' as probe, allow_salon_signup::text as setting,
-       case when allow_salon_signup = false then 'PASS (delivered apps are closed)' else 'FAIL' end as verdict
-from public.platform_settings;
+\echo '=== ONE SALON, FIRST COME ==='
+-- Migration 20 replaced the platform_settings toggle and bootstrap_salon with a
+-- rule the data enforces on its own: the door is open until a salon exists, and
+-- shuts the moment one does. This suite was left testing the old machinery and
+-- had been failing at HEAD since; it now tests what actually ships.
+select 'door is open before anyone signs up' as probe,
+       public.salon_signup_available() as available,
+       case when public.salon_signup_available() then 'PASS' else 'FAIL' end as verdict;
+
+\echo ''
+\echo '=== THE OWNER TAKES THE SLOT ==='
+select public.impersonate('11111111-1111-1111-1111-111111111111','wife@salon.test');
+select public.create_salon('CosmoCutie Salon','America/Chicago') as salon \gset
+select set_config('role','postgres',false), set_config('request.jwt.claims',null,false);
+
+select 'door shuts behind her' as probe,
+       public.salon_signup_available() as available,
+       case when not public.salon_signup_available() then 'PASS (closed)' else 'FAIL' end as verdict;
 
 do $$
 declare blocked boolean;
@@ -27,10 +41,6 @@ begin
   raise notice 'stranger creating salon -> %', case when blocked then 'PASS (refused)' else 'FAIL - LEAK' end;
   perform set_config('role','postgres',false); perform set_config('request.jwt.claims',null,false);
 end $$;
-
-\echo ''
-\echo '=== HANDOVER: bootstrap creates the one salon regardless ==='
-select public.bootstrap_salon('wife@salon.test','CosmoCutie Salon','America/Chicago') as salon \gset
 select 'salon created for the owner' as probe, count(*) as tenants,
        case when count(*) = 2 then 'PASS (salon + her chair)' else 'FAIL' end as verdict
 from public.tenants;
@@ -98,13 +108,15 @@ begin
 end $$;
 
 \echo ''
-\echo '=== TURNING SIGNUP ON WORKS WITHOUT A REBUILD ==='
-update public.platform_settings set allow_salon_signup = true;
+\echo '=== THE SLOT CANNOT BE TAKEN TWICE ==='
+-- The check lives in create_salon rather than in the screen, because a hidden
+-- button is a suggestion and this is a rule.
 do $$
-declare allowed boolean;
+declare blocked boolean;
 begin
-  perform public.impersonate('99999999-9999-9999-9999-999999999999','stranger@x.test');
-  begin perform public.create_salon('Second Salon'); allowed := true;
-  exception when others then allowed := false; end;
-  raise notice 'after flipping setting  -> %', case when allowed then 'PASS (now permitted)' else 'FAIL' end;
+  perform public.impersonate('11111111-1111-1111-1111-111111111111','wife@salon.test');
+  begin perform public.create_salon('Second Salon'); blocked := false;
+  exception when others then blocked := true; end;
+  raise notice 'owner creating a second -> %', case when blocked then 'PASS (refused)' else 'FAIL - LEAK' end;
+  perform set_config('role','postgres',false); perform set_config('request.jwt.claims',null,false);
 end $$;

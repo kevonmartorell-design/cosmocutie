@@ -66,8 +66,23 @@ async function handle(supabase: ReturnType<typeof serviceClient>, event: Record<
     // which a deposit genuinely exists, which is why the session is not
     // recorded when it is merely opened.
     case 'checkout.session.completed': {
-      const requestId = object.metadata?.booking_request_id;
       const paymentIntent = object.payment_intent;
+
+      // The closing balance at the end of a service. Taken outright, so it goes
+      // straight to captured — there was no hold to settle.
+      const paymentId = object.metadata?.payment_id;
+      if (paymentId && paymentIntent) {
+        const { error } = await supabase.rpc('settle_checkout_payment', {
+          p_payment_id: paymentId,
+          p_payment_intent_id: paymentIntent,
+          p_amount_cents: object.amount_total ?? 0,
+          p_charge_id: null,
+        });
+        if (error) throw new Error(error.message);
+        break;
+      }
+
+      const requestId = object.metadata?.booking_request_id;
       if (!requestId || !paymentIntent) break;
 
       const { error } = await supabase.rpc('record_deposit_intent_internal', {

@@ -258,6 +258,7 @@ export type Database = {
           service_ids: string[]
           status: Database["public"]["Enums"]["booking_request_status"]
           step_deadline: string
+          stripe_checkout_session_id: string | null
           stripe_payment_intent_id: string | null
           stylist_id: string
           stylist_offers_used: number
@@ -283,6 +284,7 @@ export type Database = {
           service_ids?: string[]
           status?: Database["public"]["Enums"]["booking_request_status"]
           step_deadline: string
+          stripe_checkout_session_id?: string | null
           stripe_payment_intent_id?: string | null
           stylist_id: string
           stylist_offers_used?: number
@@ -308,6 +310,7 @@ export type Database = {
           service_ids?: string[]
           status?: Database["public"]["Enums"]["booking_request_status"]
           step_deadline?: string
+          stripe_checkout_session_id?: string | null
           stripe_payment_intent_id?: string | null
           stylist_id?: string
           stylist_offers_used?: number
@@ -1016,6 +1019,66 @@ export type Database = {
           },
         ]
       }
+      payment_jobs: {
+        Row: {
+          amount_cents: number | null
+          attempts: number
+          completed_at: string | null
+          created_at: string
+          id: string
+          kind: Database["public"]["Enums"]["payment_job_kind"]
+          last_error: string | null
+          payment_id: string | null
+          run_after: string
+          status: Database["public"]["Enums"]["payment_job_status"]
+          stripe_payment_intent_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          amount_cents?: number | null
+          attempts?: number
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          kind: Database["public"]["Enums"]["payment_job_kind"]
+          last_error?: string | null
+          payment_id?: string | null
+          run_after?: string
+          status?: Database["public"]["Enums"]["payment_job_status"]
+          stripe_payment_intent_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          amount_cents?: number | null
+          attempts?: number
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          kind?: Database["public"]["Enums"]["payment_job_kind"]
+          last_error?: string | null
+          payment_id?: string | null
+          run_after?: string
+          status?: Database["public"]["Enums"]["payment_job_status"]
+          stripe_payment_intent_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_jobs_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_jobs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payments: {
         Row: {
           amount_cents: number
@@ -1025,17 +1088,19 @@ export type Database = {
           captured_at: string | null
           client_id: string | null
           created_at: string
+          disputed_at: string | null
           failure_reason: string | null
           fee_cents: number
           id: string
           kind: Database["public"]["Enums"]["payment_kind"]
-          platform_fee_cents: number
           refunded_cents: number
           released_at: string | null
           route: Database["public"]["Enums"]["charge_route"] | null
           status: Database["public"]["Enums"]["payment_status"]
           stripe_account_id: string | null
           stripe_charge_id: string | null
+          stripe_checkout_session_id: string | null
+          stripe_dispute_id: string | null
           stripe_payment_intent_id: string | null
           tenant_id: string
           tip_cents: number
@@ -1049,17 +1114,19 @@ export type Database = {
           captured_at?: string | null
           client_id?: string | null
           created_at?: string
+          disputed_at?: string | null
           failure_reason?: string | null
           fee_cents?: number
           id?: string
           kind: Database["public"]["Enums"]["payment_kind"]
-          platform_fee_cents?: number
           refunded_cents?: number
           released_at?: string | null
           route?: Database["public"]["Enums"]["charge_route"] | null
           status: Database["public"]["Enums"]["payment_status"]
           stripe_account_id?: string | null
           stripe_charge_id?: string | null
+          stripe_checkout_session_id?: string | null
+          stripe_dispute_id?: string | null
           stripe_payment_intent_id?: string | null
           tenant_id: string
           tip_cents?: number
@@ -1073,17 +1140,19 @@ export type Database = {
           captured_at?: string | null
           client_id?: string | null
           created_at?: string
+          disputed_at?: string | null
           failure_reason?: string | null
           fee_cents?: number
           id?: string
           kind?: Database["public"]["Enums"]["payment_kind"]
-          platform_fee_cents?: number
           refunded_cents?: number
           released_at?: string | null
           route?: Database["public"]["Enums"]["charge_route"] | null
           status?: Database["public"]["Enums"]["payment_status"]
           stripe_account_id?: string | null
           stripe_charge_id?: string | null
+          stripe_checkout_session_id?: string | null
+          stripe_dispute_id?: string | null
           stripe_payment_intent_id?: string | null
           tenant_id?: string
           tip_cents?: number
@@ -1284,6 +1353,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      stripe_events: {
+        Row: {
+          id: string
+          received_at: string
+          type: string
+        }
+        Insert: {
+          id: string
+          received_at?: string
+          type: string
+        }
+        Update: {
+          id?: string
+          received_at?: string
+          type?: string
+        }
+        Relationships: []
       }
       stylist_invitations: {
         Row: {
@@ -1706,7 +1793,26 @@ export type Database = {
         Args: { p_appointment_id: string; p_reason?: string }
         Returns: Database["public"]["Enums"]["cancellation_outcome"]
       }
+      checkout_amount_due: { Args: { p_payment_id: string }; Returns: number }
       claim_client_invite: { Args: { p_token: string }; Returns: string }
+      claim_payment_jobs: {
+        Args: { p_limit?: number }
+        Returns: {
+          amount_cents: number
+          attempts: number
+          job_id: string
+          kind: Database["public"]["Enums"]["payment_job_kind"]
+          payment_id: string
+          payment_intent_id: string
+          route: Database["public"]["Enums"]["charge_route"]
+          stripe_account_id: string
+          tenant_id: string
+        }[]
+      }
+      claim_stripe_event: {
+        Args: { p_event_id: string; p_type: string }
+        Returns: boolean
+      }
       claim_stylist_invitation: { Args: { p_code?: string }; Returns: string }
       create_booking_request: {
         Args: {
@@ -1727,8 +1833,22 @@ export type Database = {
       current_client_ids: { Args: never; Returns: string[] }
       current_tenant_ids: { Args: never; Returns: string[] }
       dispute_evidence: { Args: { p_appointment_id: string }; Returns: Json }
+      enqueue_payment_job: {
+        Args: {
+          p_amount_cents?: number
+          p_kind: Database["public"]["Enums"]["payment_job_kind"]
+          p_payment_id: string
+          p_payment_intent_id: string
+          p_tenant_id: string
+        }
+        Returns: string
+      }
       expire_stale_requests: { Args: never; Returns: number }
       export_my_book: { Args: { p_tenant_id: string }; Returns: Json }
+      finish_payment_job: {
+        Args: { p_error?: string; p_job_id: string; p_ok: boolean }
+        Returns: undefined
+      }
       gap_slots: {
         Args: {
           p_date: string
@@ -1741,7 +1861,6 @@ export type Database = {
         }[]
       }
       generate_invite_code: { Args: never; Returns: string }
-      impersonate: { Args: { em: string; uid: string }; Returns: undefined }
       invite_stylist: {
         Args: {
           p_booth_rent_cents?: number
@@ -1774,6 +1893,7 @@ export type Database = {
           tested_at: string
         }[]
       }
+      payout_account_for: { Args: { p_tenant_id: string }; Returns: string }
       raise_due_booth_rents: { Args: never; Returns: number }
       record_checkout: {
         Args: { p_appointment_id: string; p_tip_cents?: number }
@@ -1802,6 +1922,22 @@ export type Database = {
         }
         Returns: string
       }
+      record_deposit_intent_internal: {
+        Args: {
+          p_amount_cents: number
+          p_payment_intent_id: string
+          p_request_id: string
+        }
+        Returns: string
+      }
+      record_dispute: {
+        Args: { p_charge_id: string; p_dispute_id: string }
+        Returns: undefined
+      }
+      record_refund: {
+        Args: { p_payment_intent_id: string; p_refunded_cents: number }
+        Returns: undefined
+      }
       request_appointment_reschedule: {
         Args: { p_appointment_id: string; p_new_starts_at: string }
         Returns: undefined
@@ -1824,9 +1960,19 @@ export type Database = {
         Returns: Database["public"]["Enums"]["charge_route"]
       }
       salon_signup_available: { Args: never; Returns: boolean }
+      settle_checkout_payment: {
+        Args: {
+          p_amount_cents: number
+          p_charge_id?: string
+          p_payment_id: string
+          p_payment_intent_id: string
+        }
+        Returns: undefined
+      }
       settle_deposit: {
         Args: {
           p_captured_cents?: number
+          p_charge_id?: string
           p_outcome: Database["public"]["Enums"]["payment_status"]
           p_payment_intent_id: string
         }
@@ -1877,6 +2023,13 @@ export type Database = {
         | "hold_released"
       negotiation_actor: "client" | "stylist" | "system"
       patch_test_result: "pass" | "fail" | "reaction"
+      payment_job_kind:
+        | "capture"
+        | "release"
+        | "refund"
+        | "collect_rent"
+        | "submit_evidence"
+      payment_job_status: "pending" | "processing" | "done" | "failed"
       payment_kind: "deposit" | "service" | "retail" | "booth_rent" | "refund"
       payment_status:
         | "authorized"
@@ -2068,6 +2221,14 @@ export const Constants = {
       ],
       negotiation_actor: ["client", "stylist", "system"],
       patch_test_result: ["pass", "fail", "reaction"],
+      payment_job_kind: [
+        "capture",
+        "release",
+        "refund",
+        "collect_rent",
+        "submit_evidence",
+      ],
+      payment_job_status: ["pending", "processing", "done", "failed"],
       payment_kind: ["deposit", "service", "retail", "booth_rent", "refund"],
       payment_status: [
         "authorized",

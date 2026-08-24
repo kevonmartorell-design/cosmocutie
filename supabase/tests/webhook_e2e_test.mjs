@@ -5,9 +5,11 @@ const SECRET = 'whsec_local_only_for_testing';
 const URL = 'http://127.0.0.1:54321/functions/v1/stripe-webhook';
 const REQ = process.argv[2];
 
+// psql prints the command tag ("INSERT 0 1") after RETURNING output, so only
+// the first line is the value.
 const sql = (q) =>
   execFileSync('docker', ['exec','-i','supabase_db_CosmoCutie','psql','-U','postgres','-d','postgres','-tAc',q])
-    .toString().trim();
+    .toString().trim().split('\n')[0].trim();
 
 let pass = 0, fail = 0;
 const check = (name, cond, detail = '') => {
@@ -87,6 +89,36 @@ r = await post({ id: 'evt_disp', type: 'charge.dispute.created',
 check('accepted', r.status === 200);
 check('dispute recorded', sql(`select stripe_dispute_id from payments where stripe_charge_id='ch_live_1'`) === 'dp_live_1');
 check('evidence job queued', sql(`select count(*) from payment_jobs where kind='submit_evidence'`) === '1');
+
+console.log('\n--- the closing balance settles through the same webhook ---');
+// record_checkout writes what is owed; the session pays it. A balance is taken
+// outright, so it goes straight to captured with no hold to settle.
+// Stands in for what record_checkout writes: $240 of services plus a $40 tip,
+// owed but not yet taken. No appointment needed — the balance settles against
+// the payment row, and this suite never accepts the request into one.
+const payId = sql(`insert into payments (tenant_id, kind, status, amount_cents, tip_cents, route)
+                   select tenant_id, 'service', 'authorized', 24000, 4000, 'direct'
+                   from payments limit 1 returning id`);
+
+r = await post({ id: 'evt_bal', type: 'checkout.session.completed',
+  data: { object: { id: 'cs_bal', payment_intent: 'pi_bal_1', amount_total: 28000,
+                    metadata: { payment_id: payId } } } });
+check('accepted', r.status === 200, JSON.stringify(r.json));
+check('balance marked captured', sql(`select status from payments where id='${payId}'`) === 'captured');
+check('intent recorded', sql(`select stripe_payment_intent_id from payments where id='${payId}'`) === 'pi_bal_1');
+check('tip kept separate from the service total',
+  sql(`select amount_cents || '/' || tip_cents from payments where id='${payId}'`) === '24000/4000');
+
+console.log('\n--- a redelivered balance does not re-stamp it ---');
+const capturedAt = sql(`select captured_at from payments where id='${payId}'`);
+r = await post({ id: 'evt_bal2', type: 'checkout.session.completed',
+  data: { object: { id: 'cs_bal', payment_intent: 'pi_other', amount_total: 28000,
+                    metadata: { payment_id: payId } } } });
+check('replay accepted', r.status === 200);
+check('captured_at unchanged',
+  sql(`select captured_at from payments where id='${payId}'`) === capturedAt);
+check('intent not overwritten',
+  sql(`select stripe_payment_intent_id from payments where id='${payId}'`) === 'pi_bal_1');
 
 console.log('\n--- unknown event types are acknowledged, not retried ---');
 r = await post({ id: 'evt_unknown', type: 'invoice.created', data: { object: {} } });

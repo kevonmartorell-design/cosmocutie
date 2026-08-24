@@ -17,6 +17,7 @@ import { CCInput } from '@/components/cc-input';
 import { GlassCard } from '@/components/glass-card';
 import { Loading } from '@/components/loading';
 import { alpha, radius, spacing, typography } from '@/constants/theme';
+import { holdDeposit } from '@/payments/checkout';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/theme/theme-provider';
 
@@ -31,6 +32,7 @@ type Req = {
   step_deadline: string;
   deposit_required: boolean;
   deposit_amount_cents: number;
+  stripe_payment_intent_id: string | null;
 };
 
 type Event = {
@@ -63,6 +65,7 @@ export default function RequestThread() {
   const [slots, setSlots] = useState<{ slot_start: string }[]>([]);
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [paying, setPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -106,6 +109,22 @@ export default function RequestThread() {
       p_duration_minutes: Math.round(mins),
     });
     setSlots(data ?? []);
+  };
+
+  const payDeposit = async () => {
+    if (!req) return;
+    setPaying(true);
+    setError(null);
+    const result = await holdDeposit(req.id);
+    setPaying(false);
+
+    if (result.status === 'error') {
+      setError(result.message);
+      return;
+    }
+    // On dismissal the client may simply have backed out, or the webhook may
+    // still be in flight. Either way the screen re-reads rather than assuming.
+    await load();
   };
 
   const act = async (action: NegotiationAction) => {
@@ -154,11 +173,52 @@ export default function RequestThread() {
             </Text>
           </View>
 
-          {req.deposit_required && live ? (
+          {/* The deposit, and whether it is actually held.
+              Saying "held on your card" before a card has been collected is a
+              promise the app cannot keep, so the two states are kept distinct:
+              an ask, and a hold. */}
+          {req.deposit_required && !isStylist && live ? (
+            <GlassCard rounded="md">
+              <View style={styles.depositCard}>
+                {req.stripe_payment_intent_id ? (
+                  <>
+                    <Text style={[typography.heading, { color: theme.text }]}>
+                      ${(req.deposit_amount_cents / 100).toFixed(0)} held
+                    </Text>
+                    <Text style={[typography.caption, { color: theme.textMuted }]}>
+                      Authorised on your card, not taken. It is only charged if your
+                      stylist accepts, and released automatically if this falls through.
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={[typography.heading, { color: theme.text }]}>
+                      ${(req.deposit_amount_cents / 100).toFixed(0)} deposit
+                    </Text>
+                    <Text style={[typography.caption, { color: theme.textMuted }]}>
+                      Your stylist holds a deposit to confirm a booking. Nothing is
+                      charged unless they accept, and you can cancel free until then.
+                    </Text>
+                    <CCButton
+                      label={paying ? 'Opening Stripe…' : 'Secure this booking'}
+                      variant="primary"
+                      fullWidth
+                      disabled={paying}
+                      onPress={payDeposit}
+                    />
+                  </>
+                )}
+              </View>
+            </GlassCard>
+          ) : null}
+
+          {/* The stylist sees the same fact from the other side. */}
+          {req.deposit_required && isStylist && live ? (
             <GlassCard rounded="md">
               <Text style={[typography.caption, { color: theme.textMuted }]}>
-                ${(req.deposit_amount_cents / 100).toFixed(0)} held on your card until this is
-                settled. Released automatically if it falls through.
+                {req.stripe_payment_intent_id
+                  ? `$${(req.deposit_amount_cents / 100).toFixed(0)} deposit is held. It is captured when you accept.`
+                  : `$${(req.deposit_amount_cents / 100).toFixed(0)} deposit requested — not yet secured by the client.`}
               </Text>
             </GlassCard>
           ) : null}
@@ -283,6 +343,7 @@ export default function RequestThread() {
 }
 
 const styles = StyleSheet.create({
+  depositCard: { gap: spacing.sm },
   safe: { flex: 1 },
   scroll: { padding: spacing.lg, gap: spacing.sm },
   bubbleRow: { flexDirection: 'row' },

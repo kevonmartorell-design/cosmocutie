@@ -14,7 +14,7 @@ Status file for whoever picks this up next.
 | 1 — Schema, RLS, WatermelonDB | ✅ done |
 | 2 — Identity, onboarding, invitations | ✅ done |
 | 3 — Booking, negotiation, notifications | ✅ done |
-| 4 — Payments | 🟡 plumbing + Connect onboarding done; intents, capture, webhook remain |
+| 4 — Payments | 🟢 built and tested end to end; needs the webhook secret set and the functions deployed |
 | 5 — Clinical records | 🟡 forms + colour bar done, photos deferred |
 | 6 — Offline sync | ⬜ not started |
 | 7 — Compliance & store readiness | ⬜ not started |
@@ -23,7 +23,8 @@ Status file for whoever picks this up next.
 **Live:** https://cosmocutie.vercel.app · **Repo:** https://github.com/kevonmartorell-design/cosmocutie
 **Supabase:** `tihzzdmvjdplmcdscxbh` · **EAS:** `@vonalmighty/cosmocutie` · **Bundle:** `com.cosmocutie.app`
 
-20 migrations, all pushed to the hosted project. ~120 assertions across 14 SQL suites in `supabase/tests/`.
+22 migrations — **20 are on the hosted project, 21 and 22 are local only and still need `npx supabase db push`.**
+~190 assertions across 15 SQL suites plus 60 across three edge-function suites in `supabase/tests/`.
 
 ---
 
@@ -32,7 +33,7 @@ Status file for whoever picks this up next.
 ```bash
 npm install
 npm run db:start          # local Supabase (excludes services that fail healthchecks)
-npm run db:test           # 20 adversarial RLS checks — must pass before you change anything
+npm run db:test           # 22 adversarial RLS checks — must pass before you change anything
 ```
 
 Docker Desktop must be running. If `db:start` fails with a daemon error, `open -a Docker` and wait ~30s.
@@ -51,30 +52,64 @@ npm run push:list:preview # what has actually shipped
 npm run build:preview     # only when a NATIVE dependency changes
 ```
 
-Run individual test suites with:
 ```bash
-docker exec -i supabase_db_CosmoCutie psql -U postgres -d postgres < supabase/tests/phase3_test.sql
+npm run db:suite phase4c_test        # one or more SQL suites, each on a fresh database
+npm run functions:serve              # edge functions locally (needs supabase/functions/.env)
+npm run test:edge                    # 60 assertions against the running functions
 ```
+
+⚠️ **Every SQL suite needs its own `db reset` first.** Each one seeds its own users and its
+own salon, and the app allows exactly one salon — so running two back to back fails with
+`this app already has a salon` and then cascades into a wall of `syntax error at or near ":"`
+as every later `\gset` variable goes unset. `npm run db:suite` handles the reset; running
+`psql < suite.sql` by hand does not.
 
 ---
 
 ## What to do next
 
-### 1. Finish Phase 4 — keys are in, unblocked
+### 1. Phase 4 — built; three things left, all of them yours to click
 
 **Stripe is live in sandbox.** `STRIPE_SECRET_KEY` is set in Supabase secrets; the publishable key is in `.env` and all three `eas.json` profiles.
 
-Done and verified against the real sandbox:
-- Routing by worker classification, deposit lifecycle, idempotent `settle_deposit`, flat booth rent cron, checkout netting off deposits, `dispute_evidence`
-- **`stripe-connect` edge function** — creates a per-chair Stripe account and returns a hosted onboarding URL. Confirmed end to end.
+Built and tested:
+- Routing by worker classification, deposit lifecycle, flat booth rent cron, checkout netting off deposits, `dispute_evidence`
+- **`stripe-connect`** — per-chair Stripe account + hosted onboarding URL. Confirmed against the real sandbox.
+- **`stripe-checkout`** — hosted payment page for the deposit (manual capture) and for the closing balance (immediate). Routes direct / destination / salon off the database.
+- **`stripe-webhook`** — signature verified, event ledger for replays, reconciles deposits, captures, releases, failures, refunds, disputes, and Connect readiness.
+- **`payment-worker`** — drains `payment_jobs` (capture / release / refund / evidence) with backoff and an attempt cap.
+- Checkout UI, deposit hold in the negotiation thread, payouts onboarding on the chair screen.
 
-Still to build:
-- Payment intents with routing (direct charges via the `Stripe-Account` header so a 1099 renter stays merchant of record; `application_fee_amount` for the platform cut)
-- Capture on acceptance / release on any terminal outcome, wired to the existing `notification_queue` signals from `on_request_resolved`
-- A webhook edge function reconciling back through `settle_deposit` (verify the signature; set `STRIPE_WEBHOOK_SECRET` in Supabase secrets)
-- Checkout UI + a Connect onboarding button on the chair screen
+**Not done: `collect_rent`.** Booth rent is *raised* daily by cron but cannot be *collected* — charging it needs a saved payment method on the chair, which onboarding does not capture. The worker fails that job loudly rather than marking it done, so nobody is told rent was taken when it wasn't. This is the one Phase 4 exit criterion not met.
 
-**`@stripe/stripe-react-native` is native.** Batch it with `expo-image-picker` (Phase 5 photos) so both phases finish with **one** rebuild.
+**Not done: PaymentSheet.** Deliberately. It is a native module; the hosted page does the same job and ships OTA. Batch it with `expo-image-picker` if you ever want in-app card entry.
+
+#### What needs a human — exact steps
+
+**a) Push the two new migrations**
+```bash
+npx supabase db push
+```
+
+**b) Deploy the functions**
+```bash
+npx supabase functions deploy stripe-checkout stripe-webhook payment-worker
+```
+
+**c) Create the webhook endpoint in Stripe**
+1. Go to https://dashboard.stripe.com/test/workbench/webhooks
+2. Click **Add endpoint**
+3. URL: `https://tihzzdmvjdplmcdscxbh.supabase.co/functions/v1/stripe-webhook`
+4. Under **Select events**, add: `checkout.session.completed`, `payment_intent.succeeded`, `payment_intent.canceled`, `payment_intent.payment_failed`, `charge.refunded`, `charge.dispute.created`, `account.updated`
+5. Click **Add endpoint**, then **Reveal** the signing secret (starts `whsec_`)
+6. Set it — never paste it into a file in this repo:
+```bash
+npx supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_paste_here
+```
+
+**d) Schedule the worker** — same place `send-push` is scheduled. Every minute. Without it, holds are authorised and never captured or released.
+
+**e) Decide the platform fee.** `PLATFORM_FEE_BPS` on the edge functions, in basis points, currently **0** — the platform takes nothing. PLAN.md mentions 10% as a line item but never fixed a booking rate, so shipping a silent cut seemed worse than shipping none. When you decide: `npx supabase secrets set PLATFORM_FEE_BPS=1000` for 10%. It is charged on the service, never on the tip.
 
 #### Stripe specifics discovered the hard way — do not re-derive these
 - **This account requires Accounts v2.** `POST /v1/accounts` is refused outright for new Connect integrations. Use `POST /v2/core/accounts`.
@@ -82,12 +117,14 @@ Still to build:
 - **Merchant accounts must set `dashboard`.** We use `express`, so Stripe hosts payouts and tax documents.
 - **Account links are `/v2/core/account_links`** with a `use_case` body, not the v1 shape.
 - Payment intents are still v1 form-encoded. The `stripeV1` helper takes `stripeAccount` and `idempotencyKey` — **always pass an idempotency key on anything that moves money.**
+- **A Checkout Session's `payment_intent` may be null at creation.** So the deposit is recorded by the *webhook* on `checkout.session.completed`, not when the session is opened — which is more honest anyway: a session that was opened is not a deposit that was authorised.
 
 ### 2. Phase 5 leftovers
 Photo capture for before/processing/after galleries. `formula_photos` table and per-photo consent columns already exist.
 
 ### 3. Known cleanup
-`src/app/(app)/setup-salon.tsx` is now orphaned — salon creation moved into the sign-up flow. Nothing links to it.
+- `src/app/(app)/setup-salon.tsx` is orphaned — salon creation moved into the sign-up flow. Nothing links to it.
+- `payments` has a `fee_cents` column that is now written on refunds but never set on capture, because the platform fee is zero. When `PLATFORM_FEE_BPS` becomes non-zero, set it from the webhook so reporting can show "gross / platform fee / net" as PLAN.md asks.
 
 ---
 
@@ -97,7 +134,8 @@ Photo capture for before/processing/after galleries. `formula_photos` table and 
 - **Metro caches inlined env vars.** After editing `.env`, always export with `--clear` or you ship a bundle pointing at the wrong Supabase. This looked like a broken signup form for an hour.
 - **Port 8081 is taken** by another project on this machine. CosmoCutie is pinned to **8083**.
 - **Expo Go cannot run this app** (WatermelonDB is native). Use the **preview** build — it is standalone. The `development` profile needs Metro tethered and will not open on its own.
-- **`supabase/functions` is excluded from tsconfig.** Edge functions are Deno.
+- **`supabase/functions` and `supabase/tests` are excluded from tsconfig.** Edge functions are Deno; the test harnesses are Node and import them. `npm run typecheck` covers the app only.
+- **The edge inspector defaulted to port 8083 too** — the same port Metro is pinned to. Moved to 8084 in `config.toml`; they collided if the app and `functions serve` both ran.
 
 **Postgres**
 - **PL/pgSQL locals shadow column names.** Bit twice: `weekday` broke `available_slots`, `id` broke `record_deposit_intent`. Prefix every local `v_`.
@@ -107,17 +145,31 @@ Photo capture for before/processing/after galleries. `formula_photos` table and 
 - **`CREATE OR REPLACE` cannot change a return type**, and adding a defaulted parameter creates an *overload*. Drop first.
 - **RLS policies can recurse.** `client_records` → `clients` → `client_records` deadlocked. Resolve identity through `SECURITY DEFINER` helpers (`current_tenant_ids()`, `current_client_ids()`), never by joining the other table inside a policy.
 - **RLS and GRANTs are separate layers.** Policies alone give `permission denied for table`.
+- **New functions are granted EXECUTE to PUBLIC automatically.** `revoke ... from authenticated` does nothing about it — `authenticated` still gets in through PUBLIC. The revoke has to name `public`. Two money functions were wide open because of this.
+- **Supabase's default privileges grant new tables to `authenticated`.** Migration 7 turned that off for `anon` only. Any new machinery table needs an explicit `revoke all ... from anon, authenticated` or RLS is the only thing standing in front of it.
+- **Assert on `has_function_privilege` / `has_table_privilege`, not just on behaviour.** Both of the above returned zero rows in a behavioural test — RLS was doing its job — and only showed up when the tests asked about the grant directly.
+- **`psql -tAc` prints the command tag after `RETURNING` output.** `insert ... returning id` gives you the id *and* `INSERT 0 1`. Take the first line.
 - **Never seed `auth.users` by hand** — GoTrue fails with an opaque "Database error querying schema" at sign-in. Create users through `/auth/v1/signup`, then attach roles with SQL.
 
 **React**
 - **`refreshMemberships` must read the live session**, not the closure. Right after sign-up the auth change has not reached provider state, so `session` is null. Use `supabase.auth.getUser()`. This routed a freshly-claimed stylist to the client screen and **no unit test would have caught it** — only walking the flow did.
 - **Browser automation cannot drive react-native-web.** `form_input` sets DOM values without updating React state; synthetic clicks often miss `Pressable`. Use the native value setter plus an `input` event, and ask the user to verify real taps.
+- **`Pressable` needs pointer events, not a click.** Dispatching `pointerdown, mousedown, pointerup, mouseup, click` in sequence works where a bare `click()` silently does nothing.
 
 **Ops**
 - **Testing Connect against production consumes the one-salon slot.** Verifying `stripe-connect` required creating a real salon, which blocked the owner from ever creating hers. It was cleaned up with a scoped throwaway edge function. If this bites again, add a test-mode-only bypass rather than hand-cleaning.
 - **Edge function directories starting with `_` are treated as shared code, not functions**, and will not deploy or route.
 - **Hosted Supabase sends ~3 emails/hour.** Real signups need Resend, which needs a domain. Not yet registered.
-- **The `send-push` edge function needs a schedule** (every minute) in the Supabase dashboard, or notifications queue silently.
+- **The `send-push` edge function needs a schedule** (every minute) in the Supabase dashboard, or notifications queue silently. **`payment-worker` needs the same**, or deposits are authorised and never captured or released.
+- **Supabase gateways enforce a JWT on edge functions by default, and Stripe has no JWT to send.** Every webhook delivery came back 401 before the function was reached — an endpoint that looks healthy in the dashboard while reconciling nothing. Fixed with `[functions.stripe-webhook] verify_jwt = false` in `config.toml` rather than a deploy flag, so it cannot be forgotten. Authentication there is the signature check, which is stronger than a bearer token anyway.
+- **Test the app against LOCAL Supabase, not production**, and the one-salon slot is never at risk:
+  ```bash
+  EXPO_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321 \
+  EXPO_PUBLIC_SUPABASE_ANON_KEY=$(npx supabase status -o json | python3 -c "import sys,json;print(json.load(sys.stdin)['ANON_KEY'])") \
+  npx expo start --web --port 8083 --clear
+  ```
+  Shell vars win over `.env`, so nothing in the repo changes. Seed users through `/auth/v1/signup`, never by hand.
+- **The whole Stripe-to-database path is testable without Stripe.** The webhook authenticates by a signature we can produce ourselves, so `npm run test:edge` drives the real Deno runtime and the real database with no key involved.
 
 ---
 

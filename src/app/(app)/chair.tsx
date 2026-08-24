@@ -9,6 +9,7 @@ import { CCButton } from '@/components/cc-button';
 import { GlassCard } from '@/components/glass-card';
 import { Loading } from '@/components/loading';
 import { spacing, typography } from '@/constants/theme';
+import { startPayoutOnboarding } from '@/payments/checkout';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/theme/theme-provider';
 
@@ -20,6 +21,13 @@ type Settings = {
 };
 
 type ServiceRow = { id: string; name: string; duration_minutes: number; price_cents: number };
+
+type PayoutAccount = {
+  stripe_account_id: string | null;
+  charges_enabled: boolean;
+  payouts_enabled: boolean;
+  details_submitted: boolean;
+};
 
 /**
  * A stylist's own workspace: their menu, their policies, their book.
@@ -35,10 +43,13 @@ export default function ChairHome() {
 
   const [settings, setSettings] = useState<Settings | null>(null);
   const [services, setServices] = useState<ServiceRow[] | null>(null);
+  const [payouts, setPayouts] = useState<PayoutAccount | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const [payoutError, setPayoutError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!tenant) return;
-    const [{ data: s }, { data: svc }] = await Promise.all([
+    const [{ data: s }, { data: svc }, { data: acct }] = await Promise.all([
       supabase
         .from('stylist_settings')
         .select('requires_deposit, deposit_percent, buffer_minutes, arrival_note')
@@ -49,14 +60,37 @@ export default function ChairHome() {
         .select('id, name, duration_minutes, price_cents')
         .eq('tenant_id', tenant.tenantId)
         .order('sort_order'),
+      // RLS scopes this to the caller's own chair. A salon owner cannot read a
+      // renter's payout status, deliberately: it is not the landlord's business.
+      supabase
+        .from('stripe_accounts')
+        .select('stripe_account_id, charges_enabled, payouts_enabled, details_submitted')
+        .eq('tenant_id', tenant.tenantId)
+        .maybeSingle(),
     ]);
     setSettings(s ?? null);
     setServices(svc ?? []);
+    setPayouts((acct as PayoutAccount) ?? null);
   }, [tenant]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const connectPayouts = async () => {
+    if (!tenant) return;
+    setConnecting(true);
+    setPayoutError(null);
+    const result = await startPayoutOnboarding(tenant.tenantId);
+    setConnecting(false);
+    if (result.status === 'error') {
+      setPayoutError(result.message);
+      return;
+    }
+    // Readiness is mirrored back by Stripe's account.updated webhook, so what
+    // matters after the browser closes is what the database now says.
+    await load();
+  };
 
   const toggleDeposit = async (next: boolean) => {
     if (!tenant || !settings) return;
@@ -132,20 +166,72 @@ export default function ChairHome() {
             onPress={() => router.push('/(app)/service-new')}
           />
 
+          <Text style={[typography.label, { color: theme.textMuted }]}>GETTING PAID</Text>
+          <GlassCard>
+            <View style={styles.card}>
+              {payouts?.charges_enabled ? (
+                <>
+                  <Text style={[typography.heading, { color: theme.text }]}>
+                    Payouts are set up
+                  </Text>
+                  <Text style={[typography.caption, { color: theme.textMuted }]}>
+                    Money from your chair goes straight to your own Stripe account.
+                    {payouts.payouts_enabled
+                      ? ' Payouts are enabled.'
+                      : ' Stripe still needs a few details before it can pay out.'}
+                  </Text>
+                  {payouts.payouts_enabled ? null : (
+                    <CCButton
+                      label={connecting ? 'Opening Stripe…' : 'Finish setup'}
+                      variant="secondary"
+                      fullWidth
+                      disabled={connecting}
+                      onPress={connectPayouts}
+                    />
+                  )}
+                </>
+              ) : (
+                <>
+                  <Text style={[typography.heading, { color: theme.text }]}>
+                    Set up payouts
+                  </Text>
+                  <Text style={[typography.caption, { color: theme.textMuted }]}>
+                    Your earnings are yours: they go to your own account, in your name,
+                    never through the salon. Stripe collects your bank and tax details
+                    directly — this app never sees them.
+                  </Text>
+                  <CCButton
+                    label={connecting ? 'Opening Stripe…' : 'Set up payouts'}
+                    variant="primary"
+                    fullWidth
+                    disabled={connecting}
+                    onPress={connectPayouts}
+                  />
+                </>
+              )}
+              {payoutError ? (
+                <Text style={[typography.caption, { color: theme.danger }]}>{payoutError}</Text>
+              ) : null}
+            </View>
+          </GlassCard>
+
           <Text style={[typography.label, { color: theme.textMuted }]}>POLICIES</Text>
           <GlassCard>
             <View style={styles.settingRow}>
               <View style={styles.serviceText}>
                 <Text style={[typography.heading, { color: theme.text }]}>Require deposit</Text>
                 <Text style={[typography.caption, { color: theme.textMuted }]}>
-                  {settings?.requires_deposit
-                    ? `${settings.deposit_percent}% held at booking`
-                    : 'Off — no card is held'}
+                  {!payouts?.charges_enabled
+                    ? 'Set up payouts first'
+                    : settings?.requires_deposit
+                      ? `${settings.deposit_percent}% held at booking`
+                      : 'Off — no card is held'}
                 </Text>
               </View>
               <Switch
                 value={settings?.requires_deposit ?? false}
                 onValueChange={toggleDeposit}
+                disabled={!payouts?.charges_enabled}
                 trackColor={{ true: theme.primary, false: theme.border }}
               />
             </View>
