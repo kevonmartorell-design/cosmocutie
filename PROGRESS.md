@@ -14,7 +14,7 @@ Status file for whoever picks this up next.
 | 1 — Schema, RLS, WatermelonDB | ✅ done |
 | 2 — Identity, onboarding, invitations | ✅ done |
 | 3 — Booking, negotiation, notifications | ✅ done |
-| 4 — Payments | 🟢 built and tested end to end; needs the webhook secret set and the functions deployed |
+| 4 — Payments | 🟢 built, deployed, and live — no real money has moved through it yet |
 | 5 — Clinical records | 🟡 forms + colour bar done, photos deferred |
 | 6 — Offline sync | ⬜ not started |
 | 7 — Compliance & store readiness | ⬜ not started |
@@ -23,8 +23,45 @@ Status file for whoever picks this up next.
 **Live:** https://cosmocutie.vercel.app · **Repo:** https://github.com/kevonmartorell-design/cosmocutie
 **Supabase:** `tihzzdmvjdplmcdscxbh` · **EAS:** `@vonalmighty/cosmocutie` · **Bundle:** `com.cosmocutie.app`
 
-24 migrations — **20 are on the hosted project, 21 to 24 are local only and still need `npx supabase db push`.**
-~230 assertions across 17 SQL suites, plus 67 edge-function assertions and 19 on the exact request bodies sent to Stripe.
+**24 migrations, all on the hosted project.** ~230 assertions across 17 SQL suites,
+plus 71 edge-function assertions and 19 on the exact request bodies sent to Stripe.
+
+---
+
+## What is shipped
+
+Everything below is **live on the hosted project** as of 24 Aug 2026. Nothing in
+this list is waiting on a deploy.
+
+| | Status |
+|---|---|
+| Migrations 1–24 | ✅ all applied to `tihzzdmvjdplmcdscxbh` |
+| `send-push`, `stripe-connect` | ✅ deployed |
+| `stripe-checkout`, `stripe-webhook`, `payment-worker`, `stripe-billing` | ✅ deployed |
+| Stripe webhook destinations (×2) | ✅ Active in `acct_1U7mD6I7PIoulqv7` |
+| `STRIPE_WEBHOOK_SECRET` | ✅ set — both secrets, confirmed parsed |
+| `pg_net` extension | ✅ installed |
+| Cron: `drain-payment-jobs` (1 min) | ✅ running, verified |
+| Cron: `drain-notification-queue` (1 min) | ✅ running |
+| Cron: expiry, waitlist, booth rent (SQL) | ✅ running |
+| App JS on the phone | ✅ OTA `Phase 4 payments — deposits, checkout, booth rent` |
+
+The last OTA is newer than the last commit under `src/`, so the phone matches the
+repo. **No `eas build` is outstanding** — nothing native has been added since the
+current preview build.
+
+### What is NOT shipped, and why
+
+| | Why |
+|---|---|
+| **No real payment has ever run** | The hosted database has no salon yet, and creating one burns the single salon slot. The owner's own sign-up is the first real test. |
+| **Connected-accounts webhook secret unproven** | It is set, but no event has ever been delivered to that destination — that needs a stylist who finished Connect onboarding. See below. |
+| **`PLATFORM_FEE_BPS` is 0** | Nobody has decided the rate. The platform currently takes nothing. |
+| **`collect_rent` never charged anything** | Rent is raised daily by cron, but no chair has saved a card yet. |
+| **PaymentSheet (in-app card entry)** | Deliberate — it is a native module. The hosted Stripe page does the same job and ships OTA. |
+| **Phase 5 photos** | Not started. Would batch with PaymentSheet for one build. |
+| **Real transactional email** | Needs a domain + Resend. Hosted Supabase sends ~3/hour, which is fine for testing and not for users. |
+| **v2 Connect account events** | Not subscribed. They use thin payloads the handler cannot read yet — see the gotcha. |
 
 ---
 
@@ -73,7 +110,7 @@ as every later `\gset` variable goes unset. `npm run db:suite` handles the reset
 
 ## What to do next
 
-### 1. Phase 4 — built; three things left, all of them yours to click
+### 1. Phase 4 — deployed. One decision left, and one thing only a real booking can prove
 
 **Stripe is live in sandbox.** `STRIPE_SECRET_KEY` is set in Supabase secrets; the publishable key is in `.env` and all three `eas.json` profiles.
 
@@ -83,27 +120,36 @@ Built and tested:
 - **`stripe-checkout`** — hosted payment page for the deposit (manual capture) and for the closing balance (immediate). Routes direct / destination / salon off the database.
 - **`stripe-webhook`** — signature verified, event ledger for replays, reconciles deposits, captures, releases, failures, refunds, disputes, and Connect readiness.
 - **`payment-worker`** — drains `payment_jobs` (capture / release / refund / evidence) with backoff and an attempt cap.
-- Checkout UI, deposit hold in the negotiation thread, payouts onboarding on the chair screen.
-
 - **`stripe-billing`** — saves the card a chair pays its booth rent with, and **`collect_rent`** charges it. Rent comes off the renter's OWN saved card and settles to the salon's account; it is never withheld from their takings, because that would be a commission split rather than a tenancy. The outcome is mirrored onto `booth_rents`, which both parties can read, so the owner learns whether rent arrived without seeing anything else about the renter's business.
+- Checkout UI, deposit hold in the negotiation thread, payouts onboarding and booth-rent card on the chair screen, rent status per chair on the salon screen.
 
 **Not done: PaymentSheet.** Deliberately. It is a native module; the hosted page does the same job and ships OTA. Batch it with `expo-image-picker` if you ever want in-app card entry.
 
-**Not verified against real Stripe.** Every path is asserted on the wire — `npm run test:shapes` points the functions at a recorder and checks the exact parameters sent — but no live sandbox call has been made for intents, capture, or rent, because the secret key is in Supabase secrets and not available locally. An invalid key gets a 401 from Stripe *before* parameters are validated, so "we called Stripe and were refused" proves nothing about shape; the recorder is what covers that. A live sandbox run after deploying is still worth doing.
+**What has and has not touched real Stripe.**
 
-#### What needs a human — exact steps
+*Verified live:* the **webhook**. Two real `payment_intent.succeeded` events were
+delivered to the platform destination and returned 200 — signature verified,
+event ledger claimed, handler ran. A forged signature returned 400.
 
-**a) Push the two new migrations**
-```bash
-npx supabase db push
-```
+*Not verified live:* **creating** anything — payment intents, captures, refunds,
+rent charges. Those are asserted on the wire instead (`npm run test:shapes`
+points the functions at a local recorder and checks the exact parameters), which
+is the only thing that actually proves request shape: an invalid key gets a 401
+from Stripe *before* parameters are validated, so "we called Stripe and were
+refused" proves nothing.
 
-**b) Deploy the functions**
+The gap closes the first time someone books with a deposit.
+
+#### Deployment record
+
+**a) ✅ Migrations pushed** — all 24 on the hosted project.
+
+**b) ✅ Functions deployed** — all six. Redeploy any of them with:
 ```bash
 npx supabase functions deploy stripe-checkout stripe-webhook payment-worker stripe-billing
 ```
 
-**c) ✅ Done — two webhook destinations exist in Stripe**
+**c) ✅ Two webhook destinations exist in Stripe**
 
 In sandbox **CosmoCutie sandbox** = `acct_1U7mD6I7PIoulqv7`, which is the account
 the app's keys belong to. Both point at
@@ -162,7 +208,32 @@ webhook log will say `tried N configured secrets` and the delivery will show
 Both needed the `pg_net` extension, which was not installed — that is why
 `send-push` could never be scheduled. It is installed now.
 
-**e) Decide the platform fee.** `PLATFORM_FEE_BPS` on the edge functions, in basis points, currently **0** — the platform takes nothing. PLAN.md mentions 10% as a line item but never fixed a booking rate, so shipping a silent cut seemed worse than shipping none. When you decide: `npx supabase secrets set PLATFORM_FEE_BPS=1000` for 10%. It is charged on the service, never on the tip.
+#### The first real test — what to watch, in order
+
+Nothing has moved money yet, and the hosted database has no salon. The owner's
+own sign-up is therefore the first end-to-end run. Do it in this order and each
+step proves the one before it:
+
+1. **Owner signs up and picks "I run this salon".** Burns the single salon slot —
+   this is the real one, not a test.
+2. **Owner invites a stylist; stylist claims the code.** Chair tenant exists.
+3. **Stylist opens their chair → "Set up payouts".** Completes Stripe Connect.
+   Watch `stripe_accounts.charges_enabled` flip to true — if it stays false, the
+   `account.updated` webhook is not landing.
+4. **Stylist turns on "Require deposit"** — the toggle is disabled until step 3
+   succeeds, which is itself a useful signal.
+5. **Client books.** Request thread shows "$X deposit" with a *Secure this
+   booking* button.
+6. **Client pays on the hosted Stripe page** (test card `4242 4242 4242 4242`,
+   any future expiry, any CVC). **This is the moment the connected-accounts
+   webhook secret is finally proven.** The thread should flip to "$X held".
+   - If it does not: check that destination's **Event deliveries** for a 400, and
+     the `stripe-webhook` logs for `tried N configured secrets`.
+7. **Stylist accepts.** A `capture` job appears in `payment_jobs`; the worker
+   drains it within a minute.
+8. **Stylist checks out** with a tip. Balance nets the deposit off.
+
+**e) ⬜ STILL OPEN — decide the platform fee.** `PLATFORM_FEE_BPS` on the edge functions, in basis points, currently **0** — the platform takes nothing. PLAN.md mentions 10% as a line item but never fixed a booking rate, so shipping a silent cut seemed worse than shipping none. When you decide: `npx supabase secrets set PLATFORM_FEE_BPS=1000` for 10%. It is charged on the service, never on the tip.
 
 #### Stripe specifics discovered the hard way — do not re-derive these
 - **This account requires Accounts v2.** `POST /v1/accounts` is refused outright for new Connect integrations. Use `POST /v2/core/accounts`.
@@ -215,7 +286,7 @@ Photo capture for before/processing/after galleries. `formula_photos` table and 
 - **Testing Connect against production consumes the one-salon slot.** Verifying `stripe-connect` required creating a real salon, which blocked the owner from ever creating hers. It was cleaned up with a scoped throwaway edge function. If this bites again, add a test-mode-only bypass rather than hand-cleaning.
 - **Edge function directories starting with `_` are treated as shared code, not functions**, and will not deploy or route.
 - **Hosted Supabase sends ~3 emails/hour.** Real signups need Resend, which needs a domain. Not yet registered.
-- **The `send-push` edge function needs a schedule** (every minute) in the Supabase dashboard, or notifications queue silently. **`payment-worker` needs the same**, or deposits are authorised and never captured or released.
+- **`send-push` and `payment-worker` both need a cron schedule**, or notifications queue silently and deposits are authorised but never captured or released. Both are scheduled now (`drain-notification-queue`, `drain-payment-jobs`, every minute) — but `send-push` went unscheduled from Phase 3 until Phase 4 shipped, so every push in between was queued and never delivered.
 - **Stripe Connect needs TWO webhook destinations.** Direct charges live on the connected account and are only delivered to a "Connected accounts" destination; platform charges go to a "Your account" one. Each gets its own signing secret, so `STRIPE_WEBHOOK_SECRET` is a comma-separated list and the verifier tries each. A single-secret verifier silently rejects every event from the other destination — an endpoint that looks healthy and reconciles half the money.
 - **v2 account events use "thin payloads"** — an ID, not the object. The handler must never default a missing field: an earlier version turned a missing `charges_enabled` into `false`, which would have DISABLED a working stylist. Every field is now conditional on being present, and the v2 account events are deliberately NOT subscribed until the fetch-on-thin-payload path is built.
 - **`pg_net` is required to schedule an edge function from cron**, and it was not installed. That is the real reason `send-push` had no schedule. Cron timeout maxes at 5000ms — that is only how long pg_net waits for a response, not a limit on the function.
