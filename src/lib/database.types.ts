@@ -1849,6 +1849,15 @@ export type Database = {
         Args: { p_appointment_id: string; p_reason?: string }
         Returns: Database["public"]["Enums"]["cancellation_outcome"]
       }
+      chair_occupants: {
+        Args: never
+        Returns: {
+          classification: Database["public"]["Enums"]["worker_classification"]
+          full_name: string
+          profile_id: string
+          tenant_id: string
+        }[]
+      }
       checkout_amount_due: { Args: { p_payment_id: string }; Returns: number }
       claim_client_invite: { Args: { p_token: string }; Returns: string }
       claim_payment_jobs: {
@@ -2047,10 +2056,6 @@ export type Database = {
         Returns: undefined
       }
       step_deadline_for: { Args: { p_global: string }; Returns: string }
-      try_intent: {
-        Args: { p_cents: number; p_pi: string; p_req: string }
-        Returns: string
-      }
     }
     Enums: {
       appointment_status:

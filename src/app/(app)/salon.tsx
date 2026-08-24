@@ -71,14 +71,12 @@ export default function SalonHome() {
     }
 
     const ids = (tenants ?? []).map((t) => t.id);
-    const { data: members } = ids.length
-      ? await supabase
-          .from('tenant_members')
-          .select('tenant_id, classification, profiles(full_name)')
-          .in('tenant_id', ids)
-          .eq('role', 'stylist')
-          .eq('is_active', true)
-      : { data: [] as never[] };
+
+    // Who occupies each chair. Through an RPC rather than a join on `profiles`,
+    // because RLS is row-level: any policy wide enough to expose a renter's
+    // NAME would expose their phone and email on the same row. The function
+    // returns the name and classification and nothing else.
+    const { data: members } = await supabase.rpc('chair_occupants');
 
     const { data: rents } = ids.length
       ? await supabase
@@ -90,13 +88,12 @@ export default function SalonHome() {
     setChairs(
       (tenants ?? []).map((t) => {
         const m = (members ?? []).find((x) => x.tenant_id === t.id);
-        const profile = m?.profiles as unknown as { full_name: string } | null;
         const rent = (rents ?? []).find((x: any) => x.chair_id === t.id) ?? null;
         return {
           rent: (rent as RentStatus) ?? null,
           tenantId: t.id,
           name: t.name,
-          stylistName: profile?.full_name ?? null,
+          stylistName: m?.full_name ?? null,
           classification: m?.classification ?? null,
         };
       }),

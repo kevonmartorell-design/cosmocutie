@@ -23,8 +23,8 @@ Status file for whoever picks this up next.
 **Live:** https://cosmocutie.vercel.app · **Repo:** https://github.com/kevonmartorell-design/cosmocutie
 **Supabase:** `tihzzdmvjdplmcdscxbh` · **EAS:** `@vonalmighty/cosmocutie` · **Bundle:** `com.cosmocutie.app`
 
-23 migrations — **20 are on the hosted project, 21 to 23 are local only and still need `npx supabase db push`.**
-~210 assertions across 16 SQL suites, plus 67 edge-function assertions and 19 on the exact request bodies sent to Stripe.
+24 migrations — **20 are on the hosted project, 21 to 24 are local only and still need `npx supabase db push`.**
+~230 assertions across 17 SQL suites, plus 67 edge-function assertions and 19 on the exact request bodies sent to Stripe.
 
 ---
 
@@ -131,6 +131,7 @@ Photo capture for before/processing/after galleries. `formula_photos` table and 
 
 ### 3. Known cleanup
 - `src/app/(app)/setup-salon.tsx` is orphaned — salon creation moved into the sign-up flow. Nothing links to it.
+- **The owner cannot see a renter's phone or email.** `chair_occupants()` returns the name and classification only. Contact details were left out on purpose rather than by accident — see the gotcha below — so if the owner should be able to phone their renter, that is a deliberate decision to make, not a bug to fix.
 - `payments` has a `fee_cents` column that is now written on refunds but never set on capture, because the platform fee is zero. When `PLATFORM_FEE_BPS` becomes non-zero, set it from the webhook so reporting can show "gross / platform fee / net" as PLAN.md asks.
 
 ---
@@ -150,6 +151,7 @@ Photo capture for before/processing/after galleries. `formula_photos` table and 
 - **`search_path = ''` means schema-qualify every type** (`public.my_enum`). The empty search_path is a deliberate privilege-escalation guard.
 - **Enum columns need explicit casts from `CASE`.**
 - **`CREATE OR REPLACE` cannot change a return type**, and adding a defaulted parameter creates an *overload*. Drop first.
+- **RLS is row-level, not column-level.** A SELECT policy exposes the WHOLE row. The salon screen showed every occupied chair as "Unoccupied" because the owner could not read the renter's `profiles` row — but a policy wide enough to show `full_name` would also have handed over `phone`, `email` and `avatar_url`. Fixed with a SECURITY DEFINER function returning the two columns the screen needs (`chair_occupants()`), leaving the `profiles` policies untouched. When the fix for "show one field" is "open the row", reach for a function.
 - **RLS policies can recurse.** `client_records` → `clients` → `client_records` deadlocked. Resolve identity through `SECURITY DEFINER` helpers (`current_tenant_ids()`, `current_client_ids()`), never by joining the other table inside a policy.
 - **RLS and GRANTs are separate layers.** Policies alone give `permission denied for table`.
 - **New functions are granted EXECUTE to PUBLIC automatically.** `revoke ... from authenticated` does nothing about it — `authenticated` still gets in through PUBLIC. The revoke has to name `public`. Two money functions were wide open because of this.
