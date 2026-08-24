@@ -238,6 +238,50 @@ export type Database = {
           },
         ]
       }
+      billing_methods: {
+        Row: {
+          brand: string | null
+          created_at: string
+          exp_month: number | null
+          exp_year: number | null
+          last4: string | null
+          payment_method_id: string | null
+          stripe_customer_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          brand?: string | null
+          created_at?: string
+          exp_month?: number | null
+          exp_year?: number | null
+          last4?: string | null
+          payment_method_id?: string | null
+          stripe_customer_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          brand?: string | null
+          created_at?: string
+          exp_month?: number | null
+          exp_year?: number | null
+          last4?: string | null
+          payment_method_id?: string | null
+          stripe_customer_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_methods_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       booking_requests: {
         Row: {
           appointment_id: string | null
@@ -359,30 +403,42 @@ export type Database = {
         Row: {
           amount_cents: number
           chair_id: string
+          consecutive_fails: number
           created_at: string
           id: string
           interval: string
           is_active: boolean
+          last_charged_at: string | null
+          last_failure: string | null
+          last_paid_at: string | null
           next_due_on: string
           salon_id: string
         }
         Insert: {
           amount_cents: number
           chair_id: string
+          consecutive_fails?: number
           created_at?: string
           id?: string
           interval?: string
           is_active?: boolean
+          last_charged_at?: string | null
+          last_failure?: string | null
+          last_paid_at?: string | null
           next_due_on: string
           salon_id: string
         }
         Update: {
           amount_cents?: number
           chair_id?: string
+          consecutive_fails?: number
           created_at?: string
           id?: string
           interval?: string
           is_active?: boolean
+          last_charged_at?: string | null
+          last_failure?: string | null
+          last_paid_at?: string | null
           next_due_on?: string
           salon_id?: string
         }
@@ -1861,6 +1917,7 @@ export type Database = {
         }[]
       }
       generate_invite_code: { Args: never; Returns: string }
+      impersonate: { Args: { em: string; uid: string }; Returns: undefined }
       invite_stylist: {
         Args: {
           p_booth_rent_cents?: number
@@ -1938,6 +1995,17 @@ export type Database = {
         Args: { p_payment_intent_id: string; p_refunded_cents: number }
         Returns: undefined
       }
+      rent_collection_context: {
+        Args: { p_payment_id: string }
+        Returns: {
+          already_paid: boolean
+          amount_cents: number
+          chair_id: string
+          payment_method_id: string
+          salon_account_id: string
+          stripe_customer_id: string
+        }[]
+      }
       request_appointment_reschedule: {
         Args: { p_appointment_id: string; p_new_starts_at: string }
         Returns: undefined
@@ -1960,15 +2028,6 @@ export type Database = {
         Returns: Database["public"]["Enums"]["charge_route"]
       }
       salon_signup_available: { Args: never; Returns: boolean }
-      settle_checkout_payment: {
-        Args: {
-          p_amount_cents: number
-          p_charge_id?: string
-          p_payment_id: string
-          p_payment_intent_id: string
-        }
-        Returns: undefined
-      }
       settle_deposit: {
         Args: {
           p_captured_cents?: number
@@ -1978,7 +2037,20 @@ export type Database = {
         }
         Returns: undefined
       }
+      settle_payment_by_id: {
+        Args: {
+          p_amount_cents: number
+          p_charge_id?: string
+          p_payment_id: string
+          p_payment_intent_id: string
+        }
+        Returns: undefined
+      }
       step_deadline_for: { Args: { p_global: string }; Returns: string }
+      try_intent: {
+        Args: { p_cents: number; p_pi: string; p_req: string }
+        Returns: string
+      }
     }
     Enums: {
       appointment_status:

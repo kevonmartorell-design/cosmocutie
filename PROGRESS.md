@@ -23,8 +23,8 @@ Status file for whoever picks this up next.
 **Live:** https://cosmocutie.vercel.app · **Repo:** https://github.com/kevonmartorell-design/cosmocutie
 **Supabase:** `tihzzdmvjdplmcdscxbh` · **EAS:** `@vonalmighty/cosmocutie` · **Bundle:** `com.cosmocutie.app`
 
-22 migrations — **20 are on the hosted project, 21 and 22 are local only and still need `npx supabase db push`.**
-~190 assertions across 15 SQL suites plus 60 across three edge-function suites in `supabase/tests/`.
+23 migrations — **20 are on the hosted project, 21 to 23 are local only and still need `npx supabase db push`.**
+~210 assertions across 16 SQL suites, plus 67 edge-function assertions and 19 on the exact request bodies sent to Stripe.
 
 ---
 
@@ -55,7 +55,12 @@ npm run build:preview     # only when a NATIVE dependency changes
 ```bash
 npm run db:suite phase4c_test        # one or more SQL suites, each on a fresh database
 npm run functions:serve              # edge functions locally (needs supabase/functions/.env)
-npm run test:edge                    # 60 assertions against the running functions
+npm run test:edge                    # 67 assertions against the running functions
+
+# What we actually send Stripe. Needs functions:serve:recorded in another
+# terminal, which points STRIPE_API_BASE at a local recorder.
+npm run functions:serve:recorded
+npm run test:shapes                  # 19 assertions on the request bodies
 ```
 
 ⚠️ **Every SQL suite needs its own `db reset` first.** Each one seeds its own users and its
@@ -80,9 +85,11 @@ Built and tested:
 - **`payment-worker`** — drains `payment_jobs` (capture / release / refund / evidence) with backoff and an attempt cap.
 - Checkout UI, deposit hold in the negotiation thread, payouts onboarding on the chair screen.
 
-**Not done: `collect_rent`.** Booth rent is *raised* daily by cron but cannot be *collected* — charging it needs a saved payment method on the chair, which onboarding does not capture. The worker fails that job loudly rather than marking it done, so nobody is told rent was taken when it wasn't. This is the one Phase 4 exit criterion not met.
+- **`stripe-billing`** — saves the card a chair pays its booth rent with, and **`collect_rent`** charges it. Rent comes off the renter's OWN saved card and settles to the salon's account; it is never withheld from their takings, because that would be a commission split rather than a tenancy. The outcome is mirrored onto `booth_rents`, which both parties can read, so the owner learns whether rent arrived without seeing anything else about the renter's business.
 
 **Not done: PaymentSheet.** Deliberately. It is a native module; the hosted page does the same job and ships OTA. Batch it with `expo-image-picker` if you ever want in-app card entry.
+
+**Not verified against real Stripe.** Every path is asserted on the wire — `npm run test:shapes` points the functions at a recorder and checks the exact parameters sent — but no live sandbox call has been made for intents, capture, or rent, because the secret key is in Supabase secrets and not available locally. An invalid key gets a 401 from Stripe *before* parameters are validated, so "we called Stripe and were refused" proves nothing about shape; the recorder is what covers that. A live sandbox run after deploying is still worth doing.
 
 #### What needs a human — exact steps
 
@@ -93,21 +100,21 @@ npx supabase db push
 
 **b) Deploy the functions**
 ```bash
-npx supabase functions deploy stripe-checkout stripe-webhook payment-worker
+npx supabase functions deploy stripe-checkout stripe-webhook payment-worker stripe-billing
 ```
 
 **c) Create the webhook endpoint in Stripe**
 1. Go to https://dashboard.stripe.com/test/workbench/webhooks
 2. Click **Add endpoint**
 3. URL: `https://tihzzdmvjdplmcdscxbh.supabase.co/functions/v1/stripe-webhook`
-4. Under **Select events**, add: `checkout.session.completed`, `payment_intent.succeeded`, `payment_intent.canceled`, `payment_intent.payment_failed`, `charge.refunded`, `charge.dispute.created`, `account.updated`
+4. Under **Select events**, add: `checkout.session.completed`, `payment_intent.succeeded`, `payment_intent.canceled`, `payment_intent.payment_failed`, `charge.refunded`, `charge.dispute.created`, `account.updated`, `setup_intent.succeeded`, `payment_method.attached`, `payment_method.detached`
 5. Click **Add endpoint**, then **Reveal** the signing secret (starts `whsec_`)
 6. Set it — never paste it into a file in this repo:
 ```bash
 npx supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_paste_here
 ```
 
-**d) Schedule the worker** — same place `send-push` is scheduled. Every minute. Without it, holds are authorised and never captured or released.
+**d) Schedule the worker** — same place `send-push` is scheduled. Every minute. Without it, holds are authorised and never captured or released, and rent is raised but never charged.
 
 **e) Decide the platform fee.** `PLATFORM_FEE_BPS` on the edge functions, in basis points, currently **0** — the platform takes nothing. PLAN.md mentions 10% as a line item but never fixed a booking rate, so shipping a silent cut seemed worse than shipping none. When you decide: `npx supabase secrets set PLATFORM_FEE_BPS=1000` for 10%. It is charged on the service, never on the tip.
 
@@ -170,6 +177,8 @@ Photo capture for before/processing/after galleries. `formula_photos` table and 
   ```
   Shell vars win over `.env`, so nothing in the repo changes. Seed users through `/auth/v1/signup`, never by hand.
 - **The whole Stripe-to-database path is testable without Stripe.** The webhook authenticates by a signature we can produce ourselves, so `npm run test:edge` drives the real Deno runtime and the real database with no key involved.
+- **A 401 from Stripe proves nothing about your request.** An invalid key is rejected *before* any parameter is validated, so a mistyped parameter name and a bad key fail identically. `STRIPE_API_BASE` points the functions at a local recorder so the request body itself can be asserted — that is what `npm run test:shapes` does. Caught a `payment_intent_data` on a setup-mode session, which is a 400 at Stripe and looks like nothing locally.
+- **`supabase functions serve --env-file` REPLACES the environment.** Shell variables do not reach the Deno container, so a test-only override has to live in its own env file (`supabase/functions/.env.recorded`), not be exported before the command.
 
 ---
 

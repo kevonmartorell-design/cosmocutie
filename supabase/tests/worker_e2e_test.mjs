@@ -19,9 +19,11 @@ const SERVICE_KEY = JSON.parse(
   execFileSync('npx', ['supabase', 'status', '-o', 'json']).toString(),
 ).SERVICE_ROLE_KEY;
 
+// psql prints the command tag ("INSERT 0 1") after RETURNING output, so only
+// the first line is the value.
 const sql = (q) =>
   execFileSync('docker', ['exec','-i','supabase_db_CosmoCutie','psql','-U','postgres','-d','postgres','-tAc',q])
-    .toString().trim();
+    .toString().trim().split('\n')[0].trim();
 
 let pass = 0, fail = 0;
 const check = (name, cond, detail = '') => {
@@ -65,18 +67,69 @@ console.log('\n--- a backed-off job is not picked up again immediately ---');
 r = await run();
 check('second run finds nothing', r.json.processed === 0, JSON.stringify(r.json));
 
+console.log('\n--- booth rent refuses to pretend when it cannot charge ---');
+// The two ways rent collection legitimately cannot proceed. Both must fail
+// loudly: a job that quietly succeeds without moving money leaves the salon
+// owner believing the rent arrived.
+sql(`delete from payment_jobs`);
+const chair = sql(`select id from tenants where kind='stylist' limit 1`);
+const salon = sql(`select parent_salon_id from tenants where id='${chair}'`);
+const rentPay = sql(`insert into payments (tenant_id, kind, status, amount_cents, route)
+                     values ('${chair}','booth_rent','authorized',25000,'direct') returning id`);
+sql(`insert into payment_jobs (kind, payment_id, tenant_id, amount_cents)
+     values ('collect_rent','${rentPay}','${chair}',25000)`);
+
+r = await run();
+check('no saved card fails the job', r.json.failed === 1, JSON.stringify(r.json));
+check('and says why',
+  sql(`select last_error like '%has not saved a payment method%' from payment_jobs where kind='collect_rent'`) === 't');
+check('not silently marked done',
+  sql(`select count(*) from payment_jobs where kind='collect_rent' and status='done'`) === '0');
+
+sql(`insert into billing_methods (tenant_id, stripe_customer_id, payment_method_id)
+     values ('${chair}','cus_test','pm_test')
+     on conflict (tenant_id) do update set payment_method_id='pm_test'`);
+sql(`delete from stripe_accounts where tenant_id='${salon}'`);
+sql(`update payment_jobs set status='pending', attempts=0, run_after=now() where kind='collect_rent'`);
+
+r = await run();
+check('salon not onboarded fails the job', r.json.failed === 1, JSON.stringify(r.json));
+check('and says where the money would have gone',
+  sql(`select last_error like '%nowhere to land%' from payment_jobs where kind='collect_rent'`) === 't');
+
+console.log('\n--- with everything in place it reaches Stripe (and is refused, as expected) ---');
+sql(`insert into stripe_accounts (tenant_id, stripe_account_id, charges_enabled)
+     values ('${salon}','acct_salon_test',true)
+     on conflict (tenant_id) do update set stripe_account_id='acct_salon_test'`);
+sql(`update payment_jobs set status='pending', attempts=0, run_after=now() where kind='collect_rent'`);
+
+r = await run();
+// The env carries an invalid Stripe key, so a genuine 401 comes back. That
+// proves the call was actually attempted rather than short-circuited.
+check('the charge was attempted', r.json.failed === 1, JSON.stringify(r.json));
+check('the failure is Stripe\'s, not ours',
+  sql(`select last_error not like '%has not saved%' and last_error not like '%nowhere to land%'
+       from payment_jobs where kind='collect_rent'`) === 't');
+check('the payment is still owed, not captured',
+  sql(`select status from payments where id='${rentPay}'`) === 'authorized');
+
+console.log('\n--- rent already settled is left alone ---');
+sql(`update payments set status='captured' where id='${rentPay}'`);
+sql(`update payment_jobs set status='pending', attempts=0, run_after=now() where kind='collect_rent'`);
+r = await run();
+check('already-paid rent succeeds without charging again',
+  r.json.done === 1, JSON.stringify(r.json));
+
 console.log('\n--- one bad job does not strand the rest of the batch ---');
-sql(`update payment_jobs set run_after = now()`);
+sql(`delete from payment_jobs`);
+sql(`insert into payment_jobs (kind, tenant_id, stripe_payment_intent_id, payment_id)
+     select 'capture', tenant_id, stripe_payment_intent_id, id from payments where kind='deposit' limit 1`);
 sql(`insert into payment_jobs (kind, tenant_id, stripe_payment_intent_id)
-     select 'collect_rent', tenant_id, 'pi_rent_x' from payments limit 1`);
+     values ('release','${chair}','pi_nonexistent_x')`);
 r = await run();
 check('both jobs were handled', r.json.processed === 2, JSON.stringify(r.json));
 check('nothing left in processing',
   sql(`select count(*) from payment_jobs where status='processing'`) === '0');
-check('unimplemented rent fails loudly, not silently done',
-  sql(`select count(*) from payment_jobs where kind='collect_rent' and status='done'`) === '0');
-check('rent failure names the reason',
-  sql(`select last_error like '%not implemented%' from payment_jobs where kind='collect_rent'`) === 't');
 
 console.log('\n--- a job gives up after six attempts ---');
 sql(`update payment_jobs set attempts=5, run_after=now(), status='pending' where kind='capture'`);

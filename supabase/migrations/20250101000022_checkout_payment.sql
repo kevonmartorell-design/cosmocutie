@@ -29,12 +29,17 @@ as $$
 $$;
 
 -- -----------------------------------------------------------------------------
--- Recording that the balance was paid
+-- Recording that an owed payment was paid
 -- -----------------------------------------------------------------------------
 -- The webhook's counterpart to `settle_deposit`, for a payment that was taken
--- outright rather than authorised first. Kept separate because a checkout has
--- no hold to settle: it goes from owed to paid in one step.
-create or replace function public.settle_checkout_payment(
+-- outright rather than authorised first. Kept separate because there is no hold
+-- to settle: it goes from owed to paid in one step.
+--
+-- Keyed on the payment id rather than the intent, because the caller knows
+-- which row it is settling — it put the id in the Stripe metadata itself. Used
+-- by the closing balance at checkout and by booth rent, which are the two
+-- payments that are owed before they have an intent.
+create or replace function public.settle_payment_by_id(
   p_payment_id uuid,
   p_payment_intent_id text,
   p_amount_cents integer,
@@ -64,8 +69,8 @@ $$;
 alter table public.payments
   add column if not exists stripe_checkout_session_id text;
 
-revoke all on function public.settle_checkout_payment(uuid, text, integer, text) from public;
-grant execute on function public.settle_checkout_payment(uuid, text, integer, text) to service_role;
+revoke all on function public.settle_payment_by_id(uuid, text, integer, text) from public;
+grant execute on function public.settle_payment_by_id(uuid, text, integer, text) to service_role;
 
 revoke all on function public.checkout_amount_due(uuid) from public;
 grant execute on function public.checkout_amount_due(uuid) to authenticated, service_role;

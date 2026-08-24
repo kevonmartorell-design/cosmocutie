@@ -11,6 +11,21 @@
  */
 export const STRIPE_VERSION = '2026-07-29.dahlia';
 
+/**
+ * Where Stripe lives. Overridable so the money paths can be pointed at a local
+ * recorder in tests.
+ *
+ * This is worth stating plainly: an invalid API key gets a 401 from Stripe
+ * BEFORE any parameter is validated, so a suite that only proves "we called
+ * Stripe and were refused" proves nothing about whether the request was shaped
+ * correctly. A mistyped parameter name looks identical to a bad key. Pointing
+ * at a recorder is how the request body itself gets asserted.
+ *
+ * Only ever set in local testing; unset in every deployed environment, where it
+ * falls back to Stripe.
+ */
+const API_BASE = () => Deno.env.get('STRIPE_API_BASE') ?? 'https://api.stripe.com';
+
 const key = () => {
   const k = Deno.env.get('STRIPE_SECRET_KEY');
   if (!k) throw new Error('STRIPE_SECRET_KEY is not set');
@@ -34,7 +49,7 @@ async function parse<T>(res: Response): Promise<StripeResult<T>> {
 /** v2 endpoints: JSON bodies, mandatory version header. */
 export async function stripeV2<T>(path: string, body: unknown): Promise<StripeResult<T>> {
   return parse<T>(
-    await fetch(`https://api.stripe.com/v2${path}`, {
+    await fetch(`${API_BASE()}/v2${path}`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${key()}`,
@@ -68,12 +83,12 @@ export async function stripeV1<T>(
   const method = opts.method ?? 'POST';
   if (method === 'GET') {
     const qs = new URLSearchParams(params).toString();
-    return parse<T>(await fetch(`https://api.stripe.com/v1${path}${qs ? `?${qs}` : ''}`, { headers }));
+    return parse<T>(await fetch(`${API_BASE()}/v1${path}${qs ? `?${qs}` : ''}`, { headers }));
   }
 
   headers['Content-Type'] = 'application/x-www-form-urlencoded';
   return parse<T>(
-    await fetch(`https://api.stripe.com/v1${path}`, {
+    await fetch(`${API_BASE()}/v1${path}`, {
       method,
       headers,
       body: new URLSearchParams(params),

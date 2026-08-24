@@ -61,7 +61,9 @@
     "db:suite": "./scripts/run-suite.sh",
     "test:edge": "./scripts/test-edge.sh",
     "test:sig": "node --experimental-strip-types supabase/tests/webhook_signature_test.ts",
-    "functions:serve": "supabase functions serve --env-file supabase/functions/.env"
+    "functions:serve": "supabase functions serve --env-file supabase/functions/.env",
+    "functions:serve:recorded": "supabase functions serve --env-file supabase/functions/.env.recorded",
+    "test:shapes": "node supabase/tests/request_shape_test.mjs"
   },
   "private": true
 }

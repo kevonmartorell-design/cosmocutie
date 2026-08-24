@@ -18,6 +18,24 @@ type Chair = {
   name: string;
   stylistName: string | null;
   classification: string | null;
+  rent: RentStatus | null;
+};
+
+/**
+ * Rent, and only rent.
+ *
+ * The owner cannot see a renter's payment rows — that is the firewall, and it
+ * holds. But "did my rent arrive?" is the owner's own rental income and a fair
+ * question, so the outcome is mirrored onto `booth_rents`, which both parties
+ * to the tenancy can read. This shows that and nothing else.
+ */
+type RentStatus = {
+  amount_cents: number;
+  interval: string;
+  next_due_on: string;
+  last_paid_at: string | null;
+  last_failure: string | null;
+  consecutive_fails: number;
 };
 
 /**
@@ -62,11 +80,20 @@ export default function SalonHome() {
           .eq('is_active', true)
       : { data: [] as never[] };
 
+    const { data: rents } = ids.length
+      ? await supabase
+          .from('booth_rents')
+          .select('chair_id, amount_cents, interval, next_due_on, last_paid_at, last_failure, consecutive_fails')
+          .in('chair_id', ids)
+      : { data: [] as never[] };
+
     setChairs(
       (tenants ?? []).map((t) => {
         const m = (members ?? []).find((x) => x.tenant_id === t.id);
         const profile = m?.profiles as unknown as { full_name: string } | null;
+        const rent = (rents ?? []).find((x: any) => x.chair_id === t.id) ?? null;
         return {
+          rent: (rent as RentStatus) ?? null,
           tenantId: t.id,
           name: t.name,
           stylistName: profile?.full_name ?? null,
@@ -148,6 +175,31 @@ export default function SalonHome() {
                     />
                   ) : null}
                 </View>
+
+                {/* Rent status only. Whether it arrived, never what they earned. */}
+                {c.rent ? (
+                  <View style={styles.rentRow}>
+                    <Text style={[typography.caption, { color: theme.textMuted, flex: 1 }]}>
+                      ${(c.rent.amount_cents / 100).toFixed(0)} {c.rent.interval} · due{' '}
+                      {new Date(c.rent.next_due_on).toLocaleDateString()}
+                    </Text>
+                    {c.rent.last_failure ? (
+                      <Text style={[typography.caption, { color: theme.danger }]}>
+                        {c.rent.consecutive_fails > 1
+                          ? `Unpaid (${c.rent.consecutive_fails} attempts)`
+                          : 'Payment failed'}
+                      </Text>
+                    ) : c.rent.last_paid_at ? (
+                      <Text style={[typography.caption, { color: theme.primary }]}>
+                        Paid {new Date(c.rent.last_paid_at).toLocaleDateString()}
+                      </Text>
+                    ) : (
+                      <Text style={[typography.caption, { color: theme.textMuted }]}>
+                        Not yet due
+                      </Text>
+                    )}
+                  </View>
+                ) : null}
               </GlassCard>
             ))
           )}
@@ -212,6 +264,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
+  rentRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
   safe: { flex: 1 },
   scroll: { padding: spacing.lg, gap: spacing.md },
   centered: { flex: 1, justifyContent: 'center', padding: spacing.lg },

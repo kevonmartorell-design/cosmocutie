@@ -9,7 +9,7 @@ import { CCButton } from '@/components/cc-button';
 import { GlassCard } from '@/components/glass-card';
 import { Loading } from '@/components/loading';
 import { spacing, typography } from '@/constants/theme';
-import { startPayoutOnboarding } from '@/payments/checkout';
+import { startPayoutOnboarding, startRentBilling } from '@/payments/checkout';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/theme/theme-provider';
 
@@ -29,6 +29,16 @@ type PayoutAccount = {
   details_submitted: boolean;
 };
 
+type RentCard = { brand: string | null; last4: string | null; payment_method_id: string | null };
+
+type Rent = {
+  amount_cents: number;
+  interval: string;
+  next_due_on: string;
+  last_paid_at: string | null;
+  last_failure: string | null;
+};
+
 /**
  * A stylist's own workspace: their menu, their policies, their book.
  *
@@ -46,10 +56,13 @@ export default function ChairHome() {
   const [payouts, setPayouts] = useState<PayoutAccount | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [payoutError, setPayoutError] = useState<string | null>(null);
+  const [rent, setRent] = useState<Rent | null>(null);
+  const [rentCard, setRentCard] = useState<RentCard | null>(null);
+  const [savingCard, setSavingCard] = useState(false);
 
   const load = useCallback(async () => {
     if (!tenant) return;
-    const [{ data: s }, { data: svc }, { data: acct }] = await Promise.all([
+    const [{ data: s }, { data: svc }, { data: acct }, { data: rentRow }, { data: card }] = await Promise.all([
       supabase
         .from('stylist_settings')
         .select('requires_deposit, deposit_percent, buffer_minutes, arrival_note')
@@ -67,10 +80,24 @@ export default function ChairHome() {
         .select('stripe_account_id, charges_enabled, payouts_enabled, details_submitted')
         .eq('tenant_id', tenant.tenantId)
         .maybeSingle(),
+      // Both sides of the tenancy can read this row, which is how the stylist
+      // learns their rent bounced without the salon seeing anything else.
+      supabase
+        .from('booth_rents')
+        .select('amount_cents, interval, next_due_on, last_paid_at, last_failure')
+        .eq('chair_id', tenant.tenantId)
+        .maybeSingle(),
+      supabase
+        .from('billing_methods')
+        .select('brand, last4, payment_method_id')
+        .eq('tenant_id', tenant.tenantId)
+        .maybeSingle(),
     ]);
     setSettings(s ?? null);
     setServices(svc ?? []);
     setPayouts((acct as PayoutAccount) ?? null);
+    setRent((rentRow as Rent) ?? null);
+    setRentCard((card as RentCard) ?? null);
   }, [tenant]);
 
   useEffect(() => {
@@ -89,6 +116,19 @@ export default function ChairHome() {
     }
     // Readiness is mirrored back by Stripe's account.updated webhook, so what
     // matters after the browser closes is what the database now says.
+    await load();
+  };
+
+  const saveRentCard = async () => {
+    if (!tenant) return;
+    setSavingCard(true);
+    setPayoutError(null);
+    const result = await startRentBilling(tenant.tenantId);
+    setSavingCard(false);
+    if (result.status === 'error') {
+      setPayoutError(result.message);
+      return;
+    }
     await load();
   };
 
@@ -214,6 +254,75 @@ export default function ChairHome() {
               ) : null}
             </View>
           </GlassCard>
+
+          {/* Booth rent. Shown only when there is a tenancy: an owner-operator
+              pays no rent to themselves. */}
+          {rent ? (
+            <>
+              <Text style={[typography.label, { color: theme.textMuted }]}>BOOTH RENT</Text>
+              <GlassCard>
+                <View style={styles.card}>
+                  <View style={styles.serviceRow}>
+                    <View style={styles.serviceText}>
+                      <Text style={[typography.heading, { color: theme.text }]}>
+                        ${(rent.amount_cents / 100).toFixed(0)} {rent.interval}
+                      </Text>
+                      <Text style={[typography.caption, { color: theme.textMuted }]}>
+                        Next due {new Date(rent.next_due_on).toLocaleDateString()}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* A flat rent charged to your own card is what makes this a
+                      tenancy rather than a cut of your takings. Worth saying
+                      out loud, because it is the reason for the whole model. */}
+                  <Text style={[typography.caption, { color: theme.textMuted }]}>
+                    A fixed amount, charged to your own card. It is never taken out of
+                    what you earn.
+                  </Text>
+
+                  {rent.last_failure ? (
+                    <Text style={[typography.caption, { color: theme.danger }]}>
+                      Last attempt failed: {rent.last_failure}
+                    </Text>
+                  ) : rent.last_paid_at ? (
+                    <Text style={[typography.caption, { color: theme.primary }]}>
+                      Last paid {new Date(rent.last_paid_at).toLocaleDateString()}
+                    </Text>
+                  ) : null}
+
+                  {rentCard?.payment_method_id ? (
+                    <>
+                      <Text style={[typography.body, { color: theme.text }]}>
+                        {rentCard.brand ? rentCard.brand.toUpperCase() : 'Card'} ending{' '}
+                        {rentCard.last4 ?? '••••'}
+                      </Text>
+                      <CCButton
+                        label={savingCard ? 'Opening Stripe…' : 'Change card'}
+                        variant="secondary"
+                        fullWidth
+                        disabled={savingCard}
+                        onPress={saveRentCard}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <Text style={[typography.caption, { color: theme.danger }]}>
+                        No card saved — rent cannot be collected.
+                      </Text>
+                      <CCButton
+                        label={savingCard ? 'Opening Stripe…' : 'Save a card for rent'}
+                        variant="primary"
+                        fullWidth
+                        disabled={savingCard}
+                        onPress={saveRentCard}
+                      />
+                    </>
+                  )}
+                </View>
+              </GlassCard>
+            </>
+          ) : null}
 
           <Text style={[typography.label, { color: theme.textMuted }]}>POLICIES</Text>
           <GlassCard>

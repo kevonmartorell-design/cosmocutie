@@ -50,6 +50,7 @@ Deno.serve(async () => {
 type Job = {
   job_id: string;
   kind: string;
+  payment_id: string;
   tenant_id: string;
   payment_intent_id: string;
   amount_cents: number | null;
@@ -59,6 +60,18 @@ type Job = {
 };
 
 async function perform(job: Job) {
+  // Keyed on the job, so a retry of the same job is the same request to Stripe
+  // rather than a second one. Without this a worker that times out after Stripe
+  // has already captured would capture again on the next run.
+  const idempotencyKey = `job-${job.job_id}`;
+
+  // Rent runs on the platform against the chair's own saved card and resolves
+  // its own destination, so none of the routing below applies to it.
+  if (job.kind === 'collect_rent') {
+    await collectRent(job, idempotencyKey);
+    return;
+  }
+
   // A direct charge lives ON the connected account, so the call has to act as
   // that account to find it. A destination charge lives on the platform and
   // must not carry the header — sending one is a 404 on a payment intent that
@@ -69,11 +82,6 @@ async function perform(job: Job) {
   if (onConnectedAccount && !stripeAccount) {
     throw new Error(`no connected account for tenant ${job.tenant_id}`);
   }
-
-  // Keyed on the job, so a retry of the same job is the same request to Stripe
-  // rather than a second one. Without this a worker that times out after Stripe
-  // has already captured would capture again on the next run.
-  const idempotencyKey = `job-${job.job_id}`;
 
   switch (job.kind) {
     case 'capture': {
@@ -121,13 +129,6 @@ async function perform(job: Job) {
       await submitEvidence(job, stripeAccount, idempotencyKey);
       break;
     }
-
-    case 'collect_rent':
-      // Booth rent is raised as a payment row by the daily cron, but collecting
-      // it needs a stored payment method on the chair, which stylist onboarding
-      // does not yet capture. Failing loudly beats silently marking it done and
-      // leaving the salon owner believing rent was taken.
-      throw new Error('booth rent collection is not implemented yet');
 
     default:
       throw new Error(`unknown job kind: ${job.kind}`);
@@ -188,4 +189,73 @@ async function submitEvidence(job: Job, stripeAccount: string | undefined, idemp
     idempotencyKey,
   });
   if (!res.ok) throw new Error(res.error);
+}
+
+/**
+ * Charges a chair its booth rent and settles it to the salon.
+ *
+ * The direction of this one is the opposite of everything else in this file:
+ * money moves FROM the renter TO the landlord. That shape is not incidental. A
+ * salon that collected a stylist's takings and handed back a share would be
+ * running a commission split, which is the clearest single signal of an
+ * employment relationship. A stylist who keeps everything and separately pays a
+ * fixed rent is a tenant. So rent comes off the renter's OWN saved card, never
+ * out of their earnings.
+ *
+ * Charged on the platform and transferred to the salon, rather than as a direct
+ * charge on the salon's account — a direct charge would mean cloning the
+ * renter's card onto their landlord's Stripe account, which is more machinery
+ * and a worse answer to "whose payment instrument is that?".
+ */
+async function collectRent(job: Job, idempotencyKey: string) {
+  const supabase = serviceClient();
+
+  const { data: rows, error } = await supabase.rpc('rent_collection_context', {
+    p_payment_id: job.payment_id,
+  });
+  if (error) throw new Error(error.message);
+
+  const ctx = Array.isArray(rows) ? rows[0] : rows;
+  if (!ctx) throw new Error('no booth rent payment behind that job');
+
+  // Someone already settled it — a replay, or a manual correction. Not a
+  // failure, and charging again would be the actual damage.
+  if (ctx.already_paid) return;
+
+  // Both of these are worth failing loudly on. A job that quietly succeeds
+  // without moving money leaves the owner believing rent arrived.
+  if (!ctx.payment_method_id || !ctx.stripe_customer_id) {
+    throw new Error('this chair has not saved a payment method for rent yet');
+  }
+  if (!ctx.salon_account_id) {
+    throw new Error('the salon has not finished Stripe onboarding, so rent has nowhere to land');
+  }
+
+  const res = await stripeV1<{ id: string }>(
+    '/payment_intents',
+    {
+      amount: String(ctx.amount_cents),
+      currency: 'usd',
+      customer: ctx.stripe_customer_id,
+      payment_method: ctx.payment_method_id,
+      // Nobody is present when the cron fires, so the mandate saved at setup
+      // time is what authorises this.
+      off_session: 'true',
+      confirm: 'true',
+      description: 'Booth rent',
+      // The rent payment row has no intent id yet, so the webhook settles it by
+      // this instead.
+      'metadata[payment_id]': job.payment_id,
+      // Straight through to the salon. No application fee: the platform does
+      // not take a cut of a landlord's rent.
+      'transfer_data[destination]': ctx.salon_account_id,
+    },
+    { idempotencyKey },
+  );
+
+  if (!res.ok) {
+    // A declined card is a real, expected outcome rather than a bug — the
+    // message is Stripe's own and reaches both parties through booth_rents.
+    throw new Error(res.error);
+  }
 }

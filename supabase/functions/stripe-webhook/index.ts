@@ -72,7 +72,7 @@ async function handle(supabase: ReturnType<typeof serviceClient>, event: Record<
       // straight to captured — there was no hold to settle.
       const paymentId = object.metadata?.payment_id;
       if (paymentId && paymentIntent) {
-        const { error } = await supabase.rpc('settle_checkout_payment', {
+        const { error } = await supabase.rpc('settle_payment_by_id', {
           p_payment_id: paymentId,
           p_payment_intent_id: paymentIntent,
           p_amount_cents: object.amount_total ?? 0,
@@ -100,9 +100,68 @@ async function handle(supabase: ReturnType<typeof serviceClient>, event: Record<
     case 'payment_intent.amount_capturable_updated':
       break;
 
+    // A chair saved the card its booth rent will be charged to. Recorded
+    // against the customer rather than the tenant, because that is what the
+    // event carries — the tenant is on the row already.
+    case 'setup_intent.succeeded': {
+      if (!object.customer || !object.payment_method) break;
+      const { error } = await supabase
+        .from('billing_methods')
+        .update({ payment_method_id: object.payment_method })
+        .eq('stripe_customer_id', object.customer);
+      if (error) throw new Error(error.message);
+      break;
+    }
+
+    // Fills in what the app shows the stylist — "Visa ending 4242". Separate
+    // from the event above because only this one carries the card details, and
+    // we never see or store the number itself.
+    case 'payment_method.attached': {
+      if (!object.customer) break;
+      const card = object.card ?? {};
+      const { error } = await supabase
+        .from('billing_methods')
+        .update({
+          brand: card.brand ?? object.type ?? null,
+          last4: card.last4 ?? null,
+          exp_month: card.exp_month ?? null,
+          exp_year: card.exp_year ?? null,
+        })
+        .eq('stripe_customer_id', object.customer);
+      if (error) throw new Error(error.message);
+      break;
+    }
+
+    // A saved card was removed at Stripe. Clearing it here means the rent
+    // screen tells the truth rather than showing a card that no longer exists.
+    case 'payment_method.detached': {
+      const { error } = await supabase
+        .from('billing_methods')
+        .update({ payment_method_id: null, brand: null, last4: null,
+                  exp_month: null, exp_year: null })
+        .eq('payment_method_id', object.id);
+      if (error) throw new Error(error.message);
+      break;
+    }
+
     // Captured. `latest_charge` is what a dispute arrives against later, so it
     // gets recorded now while we have it.
     case 'payment_intent.succeeded': {
+      // Booth rent and the closing balance are owed before they have an intent,
+      // so the worker puts the payment id in the metadata and they settle by
+      // that. A deposit already has its intent on the row and settles by it.
+      const owedPaymentId = object.metadata?.payment_id;
+      if (owedPaymentId) {
+        const { error } = await supabase.rpc('settle_payment_by_id', {
+          p_payment_id: owedPaymentId,
+          p_payment_intent_id: object.id,
+          p_amount_cents: object.amount_received ?? 0,
+          p_charge_id: object.latest_charge ?? null,
+        });
+        if (error) throw new Error(error.message);
+        break;
+      }
+
       const { error } = await supabase.rpc('settle_deposit', {
         p_payment_intent_id: object.id,
         p_outcome: 'captured',
@@ -126,11 +185,21 @@ async function handle(supabase: ReturnType<typeof serviceClient>, event: Record<
     }
 
     case 'payment_intent.payment_failed': {
-      const { error } = await supabase
+      const reason = object.last_payment_error?.message ?? null;
+      const owedPaymentId = object.metadata?.payment_id;
+
+      // Matched by id for rent and balances, by intent for deposits. The update
+      // trigger on `payments` mirrors a rent failure onto booth_rents, so the
+      // salon owner learns the rent did not arrive without being shown anything
+      // else about the renter.
+      const query = supabase
         .from('payments')
-        .update({ status: 'failed', failure_reason: object.last_payment_error?.message ?? null })
-        .eq('stripe_payment_intent_id', object.id)
+        .update({ status: 'failed', failure_reason: reason })
         .eq('status', 'authorized');
+
+      const { error } = owedPaymentId
+        ? await query.eq('id', owedPaymentId)
+        : await query.eq('stripe_payment_intent_id', object.id);
       if (error) throw new Error(error.message);
       break;
     }

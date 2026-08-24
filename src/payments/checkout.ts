@@ -147,3 +147,28 @@ export async function payBalance(paymentId: string): Promise<CheckoutResult> {
   }
   return { status: 'dismissed' };
 }
+
+/**
+ * Saves the card a chair's booth rent is charged to.
+ *
+ * The opposite direction from `startPayoutOnboarding`: that is how a stylist
+ * gets paid, this is how they pay their rent. Kept apart deliberately — a
+ * renter's own card has nothing to do with their payout account, and the salon
+ * can see neither.
+ */
+export async function startRentBilling(tenantId: string): Promise<CheckoutResult> {
+  const { data, error } = await supabase.functions.invoke('stripe-billing', {
+    body: { tenant_id: tenantId },
+  });
+
+  if (error) {
+    const detail = await readFunctionError(error);
+    return { status: 'error', message: detail ?? 'Could not open card setup.' };
+  }
+  if (!data?.setup_url) {
+    return { status: 'error', message: data?.error ?? 'Could not open card setup.' };
+  }
+
+  await WebBrowser.openBrowserAsync(data.setup_url, { dismissButtonStyle: 'done' });
+  return { status: 'held' };
+}
