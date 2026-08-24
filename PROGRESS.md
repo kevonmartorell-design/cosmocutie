@@ -14,7 +14,7 @@ Status file for whoever picks this up next.
 | 1 — Schema, RLS, WatermelonDB | ✅ done |
 | 2 — Identity, onboarding, invitations | ✅ done |
 | 3 — Booking, negotiation, notifications | ✅ done |
-| 4 — Payments | 🟡 **plumbing done, Stripe integration blocked on keys** |
+| 4 — Payments | 🟡 plumbing + Connect onboarding done; intents, capture, webhook remain |
 | 5 — Clinical records | 🟡 forms + colour bar done, photos deferred |
 | 6 — Offline sync | ⬜ not started |
 | 7 — Compliance & store readiness | ⬜ not started |
@@ -60,18 +60,28 @@ docker exec -i supabase_db_CosmoCutie psql -U postgres -d postgres < supabase/te
 
 ## What to do next
 
-### 1. Finish Phase 4 — blocked on the user
-Needs a **Stripe account with test keys**, which the user is getting. Until then the remaining work cannot be verified, and this project has caught a real bug in nearly every tested batch, so do not ship money code blind.
+### 1. Finish Phase 4 — keys are in, unblocked
 
-Already done (no Stripe needed): routing by worker classification, deposit lifecycle wired to the negotiation, idempotent `settle_deposit`, flat booth rent with a daily cron, checkout netting off captured deposits, `dispute_evidence` bundling.
+**Stripe is live in sandbox.** `STRIPE_SECRET_KEY` is set in Supabase secrets; the publishable key is in `.env` and all three `eas.json` profiles.
 
-Still to build once keys arrive:
-- Connect Express onboarding per stylist (`stripe_accounts` table already exists)
-- Create/capture/release payment intents via edge functions
-- A webhook edge function reconciling back through `settle_deposit`
-- Checkout UI
+Done and verified against the real sandbox:
+- Routing by worker classification, deposit lifecycle, idempotent `settle_deposit`, flat booth rent cron, checkout netting off deposits, `dispute_evidence`
+- **`stripe-connect` edge function** — creates a per-chair Stripe account and returns a hosted onboarding URL. Confirmed end to end.
+
+Still to build:
+- Payment intents with routing (direct charges via the `Stripe-Account` header so a 1099 renter stays merchant of record; `application_fee_amount` for the platform cut)
+- Capture on acceptance / release on any terminal outcome, wired to the existing `notification_queue` signals from `on_request_resolved`
+- A webhook edge function reconciling back through `settle_deposit` (verify the signature; set `STRIPE_WEBHOOK_SECRET` in Supabase secrets)
+- Checkout UI + a Connect onboarding button on the chair screen
 
 **`@stripe/stripe-react-native` is native.** Batch it with `expo-image-picker` (Phase 5 photos) so both phases finish with **one** rebuild.
+
+#### Stripe specifics discovered the hard way — do not re-derive these
+- **This account requires Accounts v2.** `POST /v1/accounts` is refused outright for new Connect integrations. Use `POST /v2/core/accounts`.
+- **v2 endpoints REQUIRE an explicit `Stripe-Version` header.** Omitting it is a 400, not a default. Pinned to `2026-07-29.dahlia` in `supabase/functions/_shared/stripe.ts`.
+- **Merchant accounts must set `dashboard`.** We use `express`, so Stripe hosts payouts and tax documents.
+- **Account links are `/v2/core/account_links`** with a `use_case` body, not the v1 shape.
+- Payment intents are still v1 form-encoded. The `stripeV1` helper takes `stripeAccount` and `idempotencyKey` — **always pass an idempotency key on anything that moves money.**
 
 ### 2. Phase 5 leftovers
 Photo capture for before/processing/after galleries. `formula_photos` table and per-photo consent columns already exist.
@@ -104,6 +114,8 @@ Photo capture for before/processing/after galleries. `formula_photos` table and 
 - **Browser automation cannot drive react-native-web.** `form_input` sets DOM values without updating React state; synthetic clicks often miss `Pressable`. Use the native value setter plus an `input` event, and ask the user to verify real taps.
 
 **Ops**
+- **Testing Connect against production consumes the one-salon slot.** Verifying `stripe-connect` required creating a real salon, which blocked the owner from ever creating hers. It was cleaned up with a scoped throwaway edge function. If this bites again, add a test-mode-only bypass rather than hand-cleaning.
+- **Edge function directories starting with `_` are treated as shared code, not functions**, and will not deploy or route.
 - **Hosted Supabase sends ~3 emails/hour.** Real signups need Resend, which needs a domain. Not yet registered.
 - **The `send-push` edge function needs a schedule** (every minute) in the Supabase dashboard, or notifications queue silently.
 
