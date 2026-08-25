@@ -4,19 +4,16 @@ Status file for whoever picks this up next.
 
 **[PLAN.md](./PLAN.md) is the spec.** Read it before changing behaviour — it records *why* decisions were made, and several look arbitrary until you know the reason (the data firewall, the negotiation caps, the no-free-messaging rule, flat-only booth rent).
 
-> ### ⚠️ One thing is built but not deployed
+> ### ✅ Everything through Phase 5 is deployed
 >
-> The renter data export is finished and tested, and is the only work sitting
-> undeployed. Three commands, in this order — the migration creates the bucket
-> and RPC the function needs:
+> Migrations, all seven edge functions, both cron workers, and the app JS are
+> live. Nothing is waiting on a deploy and no `eas build` is outstanding.
 >
-> ```bash
-> npx supabase db push
-> npx supabase functions deploy export-data
-> npm run push:preview "Phase 5 - renter data export"
-> ```
+> Verified: `export-data` answers `401` unauthenticated and
+> `{"error":"tenant_id is required"}` with a key — it is running, not just
+> listed as ACTIVE.
 >
-> Everything else in Phases 0–5 is live. No `eas build` is outstanding.
+> What has NOT happened is a real transaction. See **What is NOT shipped**.
 
 ---
 
@@ -28,8 +25,8 @@ Status file for whoever picks this up next.
 | 1 — Schema, RLS, WatermelonDB | ✅ done |
 | 2 — Identity, onboarding, invitations | ✅ done |
 | 3 — Booking, negotiation, notifications | ✅ done |
-| 4 — Payments | 🟢 built, deployed, and live — no real money has moved through it yet |
-| 5 — Clinical records | ✅ done — forms, colour bar, photos, and renter data export |
+| 4 — Payments | 🟢 deployed and live — no real money has moved through it yet |
+| 5 — Clinical records | ✅ done and deployed — forms, colour bar, photos, renter data export |
 | 6 — Offline sync | ⬜ not started |
 | 7 — Compliance & store readiness | ⬜ not started |
 | 8+ — Deals, feed, ecosystem, shop | ⬜ not started |
@@ -37,8 +34,7 @@ Status file for whoever picks this up next.
 **Live:** https://cosmocutie.vercel.app · **Repo:** https://github.com/kevonmartorell-design/cosmocutie
 **Supabase:** `tihzzdmvjdplmcdscxbh` · **EAS:** `@vonalmighty/cosmocutie` · **Bundle:** `com.cosmocutie.app`
 
-**26 migrations — 25 on the hosted project, migration 26 (data export) is local
-only and still needs `npx supabase db push`.**
+**26 migrations, all on the hosted project.**
 
 Roughly 250 assertions in total: 17 SQL suites in `supabase/tests/`, plus seven
 harnesses that run against the real services — webhook signatures, the full
@@ -55,18 +51,19 @@ this list is waiting on a deploy.
 
 | | Status |
 |---|---|
-| Migrations 1–25 | ✅ applied to `tihzzdmvjdplmcdscxbh` |
+| Migrations 1–26 | ✅ applied to `tihzzdmvjdplmcdscxbh` |
 | `send-push`, `stripe-connect` | ✅ deployed |
 | `stripe-checkout`, `stripe-webhook`, `payment-worker`, `stripe-billing` | ✅ deployed |
+| `export-data` | ✅ deployed and answering |
 | Stripe webhook destinations (×2) | ✅ Active in `acct_1U7mD6I7PIoulqv7` |
 | `STRIPE_WEBHOOK_SECRET` | ✅ set — both secrets, confirmed parsed |
 | `pg_net` extension | ✅ installed |
 | Cron: `drain-payment-jobs` (1 min) | ✅ running, verified |
 | Cron: `drain-notification-queue` (1 min) | ✅ running |
 | Cron: expiry, waitlist, booth rent (SQL) | ✅ running |
-| App JS on the phone | ✅ OTA `Phase 4 payments — deposits, checkout, booth rent` |
+| App JS on the phone | ✅ OTA `Phase 5 - renter data export` |
 | Photo capture | ✅ native build done, on the phone |
-| Data export | ⚠️ **built — needs migration 26 pushed, `export-data` deployed, and an OTA** |
+| Data export | ✅ migration, `export-data`, and OTA all live |
 
 **No `eas build` outstanding.** Photos needed one (two native modules) and it is
 done. The data export deliberately adds none — it writes files server-side and
@@ -74,12 +71,13 @@ hands back signed links, so it ships over the air. Saving to the device would
 have meant `expo-file-system` and `expo-sharing`, and neither is worth a rebuild
 for something run once a year.
 
-To ship the export, in this order:
+For future work, the order that matters is: migrations first (the app and
+functions query what they create), then functions, then the OTA.
 
 ```bash
-npx supabase db push                              # migration 26 (bucket + RPC)
-npx supabase functions deploy export-data
-npm run push:preview "Phase 5 - renter data export"
+npx supabase db push
+npx supabase functions deploy <name>
+npm run push:preview "what changed"
 ```
 
 ### What is NOT shipped, and why
